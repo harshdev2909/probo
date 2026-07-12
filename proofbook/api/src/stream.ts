@@ -15,9 +15,9 @@
 import { Client } from "pg";
 import type { FastifyBaseLogger } from "fastify";
 
-import { prisma } from "../../db/src/client";
+import { prisma, CHANNEL } from "../../db/src/client";
 
-export const CHANNEL = "proofbook_events";
+export { CHANNEL };
 
 export interface StreamEvent {
   id: string;

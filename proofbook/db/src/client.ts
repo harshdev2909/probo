@@ -22,6 +22,13 @@ if (process.env.NODE_ENV !== "production") g.__proofbookPrisma = prisma;
 
 export * from "../generated/client";
 
+/**
+ * The Postgres NOTIFY channel the keeper writes to and every API instance listens
+ * on. It lives here, not in the API: it belongs to the database, and putting it in
+ * api/ would make the KEEPER import the API just to learn a channel name.
+ */
+export const CHANNEL = "proofbook_events";
+
 /** JSON cannot hold a BigInt. Serialise as a decimal string everywhere. */
 export function jsonSafe<T>(value: T): T {
   return JSON.parse(

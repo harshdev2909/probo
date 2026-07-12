@@ -1,0 +1,21 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "RAILPACK",
+    "watchPatterns": [
+      "/proofbook/keeper/**",
+      "/proofbook/db/**",
+      "/proofbook/data/**",
+      "/proofbook/idl/**",
+      "/proofbook/package.json",
+      "/proofbook/package-lock.json"
+    ]
+  },
+  "deploy": {
+    "preDeployCommand": "npm run db:deploy",
+    "startCommand": "npm run start:keeper",
+    "numReplicas": 1,
+    "restartPolicyType": "ALWAYS",
+    "restartPolicyMaxRetries": 10
+  }
+}

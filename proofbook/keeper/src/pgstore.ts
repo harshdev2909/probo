@@ -11,8 +11,7 @@
  * Every mutation also appends a `feed_event` and NOTIFYs, which is how a stateless
  * API instance learns anything happened.
  */
-import { prisma, ProofStatus, MarketStatus } from "../../db/src/client";
-import { CHANNEL } from "../../api/src/stream";
+import { prisma, CHANNEL, ProofStatus, MarketStatus } from "../../db/src/client";
 import { Logger } from "./logger";
 import { resolveTeam, stageOf } from "../../data/tournament";
 import type {

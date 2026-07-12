@@ -119,6 +119,58 @@ blocks and writes nothing.) But you still only *need* one.
 
 ---
 
+## Railway: config as code
+
+Two config files, one per service. Point each Railway service at one instead of
+clicking through the UI:
+
+| Railway setting | Keeper | API |
+|---|---|---|
+| **Root Directory** | `/proofbook` | `/proofbook` |
+| **Config File** | `railway.keeper.json` | `railway.api.json` |
+
+> **Root Directory must be `/proofbook`, not `/proofbook/keeper`.** The repo root is
+> `probo`; `proofbook/` is a subdirectory, and that is where `package.json`,
+> `node_modules` and `idl/` live. Point it at `proofbook/keeper` and the build fails —
+> there is no `package.json` in there.
+>
+> **Watch patterns are relative to the REPO root**, which is why they read
+> `/proofbook/...` while the Config File path is relative to the Root Directory.
+> They are two different bases. Yes, that is confusing.
+
+### Why the watch patterns are not just `keeper/**`
+
+The keeper imports from `db/` (its whole store is Prisma) and `data/` (the 48-team
+registry), and it reads `idl/` at boot. Watching only `keeper/**` means a schema or
+registry change ships **without the keeper redeploying** — it keeps running old code
+against a new database. That is a 2am bug.
+
+Equally deliberate: neither service watches the other. The keeper imports nothing
+from `api/`, so an API tweak must never restart the worker that settles matches —
+and a keeper change must not restart the read layer a judge is browsing.
+
+### What the settings encode
+
+- **`preDeployCommand: npm run db:deploy`** on the keeper — migrations run once per
+  deployment, before anything starts. It is on the keeper because the keeper is the
+  single writer; putting it on both services would race them.
+- **`restartPolicyType: ALWAYS`** on the keeper — it *deliberately exits* if it loses
+  the Postgres advisory lock, because at that moment it can no longer be sure it is
+  the only writer, and stopping beats guessing. It must be restarted, or it stays
+  dead through the Final.
+- **`numReplicas: 1`** on the keeper — two keepers are *safe* (they elect a leader;
+  a follower writes nothing), but a second one would only idle. The safety exists
+  for rolling deploys, not for scaling.
+- **`healthcheckPath: /health`** on the API — and note it returns **200 even when the
+  keeper is dead**. That is on purpose. Keeper liveness is a *field* in the response,
+  never the status code; if it were the status code, a keeper blip would restart-loop
+  the API and take the whole site down with it.
+
+The web app goes to **Vercel** (below). If you'd rather run it on Railway, it needs
+its own service with Root Directory `/proofbook/web`.
+
+---
+
 ## 3. API
 
 Stateless. Scale to as many instances as you like — they all `LISTEN` on Postgres
