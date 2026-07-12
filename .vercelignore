@@ -1,0 +1,36 @@
+# THIS FILE MUST LIVE AT THE GIT ROOT (`probo/`), because that is where Vercel is
+# linked (see ./.vercel) and therefore what it uploads from. A .vercelignore
+# inside `proofbook/` or `proofbook/web/` is silently ignored — which is how an
+# upload of 18,422 files (the root node_modules + .next) blew the 15,000 limit,
+# and how the uploader ended up trying to read a UNIX SOCKET at
+# proofbook/.anchor/test-ledger/admin.rpc (`Unknown system error -102`).
+#
+# Paths are relative to THIS directory.
+
+# dependency trees — Vercel installs its own
+proofbook/node_modules
+proofbook/web/node_modules
+**/node_modules
+
+# build output
+proofbook/web/.next
+proofbook/target
+proofbook/.anchor
+proofbook/test-ledger
+proofbook/.surfpool
+**/*.so
+
+# server-side services — the web app only reaches ../../shared
+proofbook/keeper
+proofbook/api
+proofbook/db
+proofbook/programs
+proofbook/migrations
+proofbook/scripts
+proofbook/tests
+proofbook/docs
+proofbook/backups
+
+# secrets
+**/.env
+**/.env.*
