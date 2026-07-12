@@ -29,10 +29,20 @@ export function normalizeUpdate(raw: any): ScoreUpdate | null {
     if (g1 !== undefined) score.p1 = Number(g1);
     if (g2 !== undefined) score.p2 = Number(g2);
   }
-  return { fixtureId: Number(fixtureId), seq: Number(seq), ts: Number(ts), statusId, score, raw };
+  return {
+    fixtureId: Number(fixtureId),
+    seq: Number(seq),
+    ts: Number(ts),
+    statusId,
+    score,
+    raw,
+  };
 }
 
 export interface FixtureInfo {
+  /** Raw TxLINE participant names — the source of truth for team identity. */
+  p1Name?: string;
+  p2Name?: string;
   fixtureId: number;
   name?: string;
   kickoffTs?: number; // unix seconds
@@ -44,9 +54,15 @@ export function normalizeFixture(raw: any): FixtureInfo | null {
   const fixtureId = raw.FixtureId ?? raw.fixtureId ?? raw.Id ?? raw.id;
   if (fixtureId === undefined) return null;
   const start =
-    raw.StartTime ?? raw.startTime ?? raw.Kickoff ?? raw.kickoff ?? raw.StartTs ?? raw.startTs;
+    raw.StartTime ??
+    raw.startTime ??
+    raw.Kickoff ??
+    raw.kickoff ??
+    raw.StartTs ??
+    raw.startTs;
   let kickoffTs: number | undefined;
-  if (typeof start === "number") kickoffTs = start > 1e12 ? Math.floor(start / 1000) : start;
+  if (typeof start === "number")
+    kickoffTs = start > 1e12 ? Math.floor(start / 1000) : start;
   else if (typeof start === "string") {
     const t = Date.parse(start);
     if (!isNaN(t)) kickoffTs = Math.floor(t / 1000);
@@ -57,6 +73,8 @@ export function normalizeFixture(raw: any): FixtureInfo | null {
     raw.Name ?? raw.name ?? (p1 && p2 ? `${p1} vs ${p2}` : undefined);
   return {
     fixtureId: Number(fixtureId),
+    p1Name: p1,
+    p2Name: p2,
     name,
     kickoffTs,
     competitionId: raw.CompetitionId ?? raw.competitionId,
@@ -94,8 +112,14 @@ export class TxLineClient {
     return Array.isArray(data) ? data : [];
   }
 
-  async statValidation(fixtureId: number, seq: number, statKeys: number[]): Promise<any> {
-    const url = `/scores/stat-validation?fixtureId=${fixtureId}&seq=${seq}&statKeys=${statKeys.join(",")}`;
+  async statValidation(
+    fixtureId: number,
+    seq: number,
+    statKeys: number[]
+  ): Promise<any> {
+    const url = `/scores/stat-validation?fixtureId=${fixtureId}&seq=${seq}&statKeys=${statKeys.join(
+      ","
+    )}`;
     this.log.info("fetching proof", { url });
     const { data } = await this.session.api.get(url);
     return data;

@@ -11,6 +11,19 @@ export interface FixtureLive {
   fixtureId: number;
   competitionId?: number;
   name?: string;
+  /** Real TxLINE participant names (source of truth; never guessed). */
+  homeName?: string;
+  awayName?: string;
+  stage?: string;
+  /**
+   * Whether this fixture's result can be PROVEN from TxLINE.
+   *   proven   — a real merkle proof exists; the market settles and earns a receipt
+   *   no_proof — outside TxLINE's retention window. We show the fixture, we do NOT
+   *              show a scoreline, and we never fabricate a receipt.
+   *   upcoming — not played yet
+   */
+  proofStatus?: "proven" | "no_proof" | "upcoming";
+  gapReason?: string;
   kickoffTs?: number; // unix seconds
   lastSeq?: number;
   lastTs?: number; // unix ms of last score update
@@ -49,6 +62,13 @@ export interface ProofReceipt {
   marketPda: string;
   matchId: number;
   winningOutcome: number;
+  /**
+   * The goal values the merkle proof actually attests — NOT the feed's `Score`
+   * field, which is sampled and has been observed to disagree with the proof.
+   * If it isn't proven, it isn't here.
+   */
+  provenScore?: { p1: number; p2: number };
+  statPeriod?: number;
   outcomeLabel: string;
   oracleProgram: string;
   epochDay: number;
@@ -62,7 +82,23 @@ export interface ProofReceipt {
   feeAmount: string;
 }
 
-interface StoreData {
+/**
+ * What the keeper needs from a store. The JSON `Store` (replay/local) and the
+ * Postgres `PgStore` (live) both satisfy it, so the keeper core never knows or
+ * cares which one it is holding.
+ */
+export interface StoreLike {
+  data: StoreData;
+  fixture(id: number): FixtureLive;
+  marketByFixture(
+    fixtureId: number,
+    marketType: number
+  ): MarketRecord | undefined;
+  saveSoon(): void;
+  flush(): void;
+}
+
+export interface StoreData {
   fixtures: Record<string, FixtureLive>;
   markets: Record<string, MarketRecord>; // key = marketPda
   receipts: Record<string, ProofReceipt>; // key = marketPda
@@ -70,7 +106,13 @@ interface StoreData {
   mints: { usdcMint?: string };
 }
 
-const EMPTY: StoreData = { fixtures: {}, markets: {}, receipts: {}, session: {}, mints: {} };
+const EMPTY: StoreData = {
+  fixtures: {},
+  markets: {},
+  receipts: {},
+  session: {},
+  mints: {},
+};
 
 export class Store {
   data: StoreData;
@@ -83,7 +125,10 @@ export class Store {
     fs.mkdirSync(dataDir, { recursive: true });
     this.file = path.join(dataDir, "state.json");
     try {
-      this.data = { ...EMPTY, ...JSON.parse(fs.readFileSync(this.file, "utf8")) };
+      this.data = {
+        ...EMPTY,
+        ...JSON.parse(fs.readFileSync(this.file, "utf8")),
+      };
       this.log.info("state loaded", {
         fixtures: Object.keys(this.data.fixtures).length,
         markets: Object.keys(this.data.markets).length,
@@ -121,7 +166,10 @@ export class Store {
     return this.data.fixtures[k];
   }
 
-  marketByFixture(fixtureId: number, marketType: number): MarketRecord | undefined {
+  marketByFixture(
+    fixtureId: number,
+    marketType: number
+  ): MarketRecord | undefined {
     return Object.values(this.data.markets).find(
       (m) => m.fixtureId === fixtureId && m.marketType === marketType
     );

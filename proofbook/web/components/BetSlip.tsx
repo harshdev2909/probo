@@ -5,24 +5,49 @@
  * with no fake progress. Gates: wallet-not-connected, market-not-open,
  * insufficient USDC. Payout math shown before signing.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { PublicKey } from "@solana/web3.js";
-import type { MarketView } from "@/lib/api";
+import { api, type MarketView } from "@/lib/api";
 import { teamsForFixture } from "@/lib/teams";
-import { placeBet, usdcBalance } from "@/lib/anchor";
+import {
+  prepareBet,
+  signSendConfirm,
+  usdcBalance,
+  isFresh,
+  type PreparedTx,
+} from "@/lib/anchor";
 import { projectPayout, usdc } from "@/lib/format";
 
 type TxState =
   | { s: "idle" }
   | { s: "signing" }
-  | { s: "confirming" }
+  | { s: "confirming"; sig: string }
   | { s: "confirmed"; sig: string }
   | { s: "error"; msg: string };
 
 const QUICK = [10, 50, 100, 500];
+
+/** Turn a wallet/program failure into something a person can act on. */
+function betError(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  if (/user rejected|user denied/i.test(raw)) return "Signature declined.";
+  if (/BettingClosed/.test(raw)) return "Betting has closed on this match.";
+  if (/OutcomeMismatch|InvalidOutcome/.test(raw)) return "That outcome is not valid for this market.";
+  if (/insufficient funds|InsufficientFunds|0x1$/.test(raw))
+    return "Not enough test USDC — top up above.";
+  if (/AccountNotInitialized|could not find account/i.test(raw))
+    return "No token account yet — tap “Get test USDC” above.";
+  if (/already in use|AccountAlreadyInitialized/i.test(raw))
+    return "You already have a position on this market. One bet per wallet per market.";
+  if (/Blockhash expired/i.test(raw)) return "Took too long to sign. Try again.";
+  if (/Timed out/i.test(raw)) return raw;
+  if (/failed to fetch|fetch failed/i.test(raw))
+    return "Can't reach the network. Check the RPC endpoint.";
+  return raw.slice(0, 140);
+}
 
 export function BetSlip({ market, onPlaced }: { market: MarketView; onPlaced?: () => void }) {
   const { connection } = useConnection();
@@ -34,8 +59,14 @@ export function BetSlip({ market, onPlaced }: { market: MarketView; onPlaced?: (
   const [stake, setStake] = useState("");
   const [tx, setTx] = useState<TxState>({ s: "idle" });
   const [balance, setBalance] = useState<number | null>(null);
+  const [funding, setFunding] = useState(false);
+  const [fundErr, setFundErr] = useState<string | null>(null);
+  // Built + simulated while the user is still choosing, so the click handler can
+  // hit the wallet immediately and keep its user activation (see PreparedTx).
+  const [prepared, setPrepared] = useState<PreparedTx | null>(null);
+  const [waking, setWaking] = useState(false);
 
-  const [home, away] = teamsForFixture(market.fixtureId, market.fixtureName);
+  const [home, away] = teamsForFixture(market.fixtureId, market.fixtureName, market.home, market.away);
   const labels = [`${home.code} win`, "Draw", `${away.code} win`];
   const stakeNum = parseFloat(stake) || 0;
   const open = market.status === "open" && market.lockTime * 1000 > Date.now();
@@ -54,20 +85,89 @@ export function BetSlip({ market, onPlaced }: { market: MarketView; onPlaced?: (
   );
 
   const insufficient = balance !== null && stakeNum > balance;
+  // A connected wallet with no demo token (no ATA => null, or an empty one) cannot
+  // bet. Offer the funds rather than letting the transaction fail on submit.
+  const needsFunds = wallet.connected && (balance === null || balance === 0);
+
+  async function fund() {
+    if (!wallet.publicKey) return;
+    setFunding(true);
+    setFundErr(null);
+    try {
+      const r = await api.faucet(wallet.publicKey.toBase58());
+      setBalance(
+        await usdcBalance(
+          connection,
+          wallet.publicKey,
+          new PublicKey(market.usdcMint)
+        )
+      );
+      void r;
+    } catch (e: unknown) {
+      setFundErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFunding(false);
+    }
+  }
+
+  // `useWallet()` returns a fresh object on every adapter state change, so it must
+  // not be an effect dependency — it would re-simulate in a loop and hammer the RPC.
+  const walletRef = useRef(wallet);
+  walletRef.current = wallet;
+  const owner = wallet.publicKey?.toBase58();
+
+  // Prepare (blockhash + simulate) in the background as the bet takes shape.
+  useEffect(() => {
+    if (!owner || outcome === null || stakeNum <= 0 || !open) {
+      setPrepared(null);
+      return;
+    }
+    let cancelled = false;
+    const build = () =>
+      prepareBet(connection, walletRef.current, market, outcome, stakeNum)
+        .then((p) => !cancelled && setPrepared(p))
+        .catch(() => !cancelled && setPrepared(null)); // surfaced on submit instead
+
+    const t = setTimeout(build, 250); // debounce typing
+    const refresh = setInterval(build, 20_000); // keep the blockhash fresh
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+      clearInterval(refresh);
+    };
+  }, [connection, owner, market, outcome, stakeNum, open]);
 
   async function submit() {
     if (outcome === null || stakeNum <= 0 || !open) return;
     try {
+      // "signing" holds until the wallet actually hands back a signature —
+      // flipping to "confirming" before that made a stuck wallet prompt look
+      // like a stuck confirmation.
       setTx({ s: "signing" });
-      const sigPromise = placeBet(connection, wallet, market, outcome, stakeNum);
-      setTx({ s: "confirming" });
-      const sig = await sigPromise;
-      setTx({ s: "confirmed", sig });
-      setStake("");
-      onPlaced?.();
+
+      // If a fresh transaction is ready, go STRAIGHT to the wallet: awaiting RPC
+      // here would burn the click's user activation and the approval window would
+      // never open. Only fall back to building inline if nothing is ready.
+      const ready = isFresh(prepared)
+        ? prepared
+        : await prepareBet(connection, wallet, market, outcome, stakeNum);
+
+      // If the wallet takes a moment, tell them where to look rather than spin.
+      const nudge = setTimeout(() => setWaking(true), 4000);
+      try {
+        const sig = await signSendConfirm(connection, wallet, ready, (signature) =>
+          setTx({ s: "confirming", sig: signature })
+        );
+        setTx({ s: "confirmed", sig });
+        setStake("");
+        setPrepared(null);
+        onPlaced?.();
+      } finally {
+        clearTimeout(nudge);
+        setWaking(false);
+      }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setTx({ s: "error", msg: msg.includes("User rejected") ? "Signature declined." : msg.slice(0, 120) });
+      setTx({ s: "error", msg: betError(e) });
     }
   }
 
@@ -150,6 +250,40 @@ export function BetSlip({ market, onPlaced }: { market: MarketView; onPlaced?: (
         </p>
       </div>
 
+      {/* devnet funding: a bet needs the demo token AND SOL for its Position rent */}
+      {needsFunds && open && (
+        <div className="mt-4 border border-dashed border-hairline-strong p-3">
+          <p className="text-[12px] text-ink-300">
+            You have no test funds yet.
+          </p>
+          <p className="mt-1 text-[11px] leading-snug text-ink-500">
+            This is devnet. The tokens are a demo mint with no value, and you get a
+            little SOL to cover the network fee.
+          </p>
+          <button
+            onClick={fund}
+            disabled={funding}
+            className="mt-3 w-full border border-hairline-strong py-2.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-100 transition-colors duration-150 ease-snap hover:border-brass-500 disabled:opacity-50"
+            style={{ borderRadius: "0 0 0 10px" }}
+          >
+            {funding ? "Sending…" : "Get 10,000 test USDC"}
+          </button>
+          {fundErr && (
+            <p className="mt-2 text-[11px] text-red-400" role="alert">
+              {fundErr}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Phantom needs Testnet Mode on, or it signs against the wrong cluster and
+          the bet never appears. Cheaper to say it than to let people hit it. */}
+      {wallet.connected && open && (
+        <p className="mt-3 text-[10px] leading-snug text-ink-600">
+          Devnet. Your wallet must have Testnet&nbsp;Mode enabled.
+        </p>
+      )}
+
       {/* action + states */}
       <div className="mt-4">
         {!wallet.connected ? (
@@ -173,6 +307,15 @@ export function BetSlip({ market, onPlaced }: { market: MarketView; onPlaced?: (
           >
             {tx.s === "signing" ? "Sign in wallet…" : tx.s === "confirming" ? "Confirming…" : insufficient ? "Insufficient USDC" : "Place bet"}
           </button>
+        )}
+
+        {/* A wallet request can be queued behind the extension icon without ever
+            raising a window. Say where to look instead of spinning silently. */}
+        {waking && tx.s === "signing" && (
+          <p className="mt-3 text-[11px] leading-snug text-ink-400" role="status">
+            Waiting on your wallet. If no prompt appeared, open the wallet extension
+            from the toolbar — the request is probably waiting there.
+          </p>
         )}
 
         <AnimatePresence>

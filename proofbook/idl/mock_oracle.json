@@ -1,0 +1,565 @@
+{
+  "address": "F7QqiHeEEDenTEY8fu55rrYTmFrX4K9KKe3hbcdgrZ7u",
+  "metadata": {
+    "name": "mock_oracle",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "publish_daily_root",
+      "docs": [
+        "TEST-ONLY: publish (or overwrite) the daily scores Merkle root for a day.",
+        "Mimics TxLINE's off-chain batching that lands a signed daily root on-chain.",
+        "Not part of the real `validate_stat` interface."
+      ],
+      "discriminator": [
+        45,
+        158,
+        185,
+        228,
+        133,
+        151,
+        26,
+        123
+      ],
+      "accounts": [
+        {
+          "name": "daily_scores_merkle_roots",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  97,
+                  105,
+                  108,
+                  121,
+                  95,
+                  115,
+                  99,
+                  111,
+                  114,
+                  101,
+                  115,
+                  95,
+                  114,
+                  111,
+                  111,
+                  116,
+                  115
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_day"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "epoch_day",
+          "type": "u16"
+        },
+        {
+          "name": "root",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "validate_stat_v2",
+      "docs": [
+        "Mirrors TxLINE `validate_stat_v2`. Returns `true` iff every stat leaf in",
+        "`payload.stats` is proven under the published daily Merkle root AND the",
+        "`NDimensionalStrategy` (AND-combined discrete predicates + optional",
+        "geometric distance) holds over the proven values.",
+        "",
+        "A **bad Merkle proof / bad coverage errors** (mirrors TxLINE's verification",
+        "errors); a **failing predicate returns `Ok(false)`** (mirrors",
+        "`PredicateFailed`). ProofBook treats *either* as \"not verified\"."
+      ],
+      "discriminator": [
+        208,
+        215,
+        194,
+        214,
+        241,
+        71,
+        246,
+        178
+      ],
+      "accounts": [
+        {
+          "name": "daily_scores_merkle_roots",
+          "docs": [
+            "The published daily scores Merkle roots account (read-only), exactly as",
+            "in the real TxLINE IDL (a single, unconstrained account)."
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "payload",
+          "type": {
+            "defined": {
+              "name": "StatValidationInput"
+            }
+          }
+        },
+        {
+          "name": "strategy",
+          "type": {
+            "defined": {
+              "name": "NDimensionalStrategy"
+            }
+          }
+        }
+      ],
+      "returns": "bool"
+    }
+  ],
+  "accounts": [
+    {
+      "name": "DailyScoresMerkleRoots",
+      "discriminator": [
+        14,
+        39,
+        119,
+        24,
+        180,
+        136,
+        17,
+        91
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "WrongDailyRoot",
+      "msg": "Daily root account does not match the timestamp's epoch day."
+    },
+    {
+      "code": 6001,
+      "name": "StatProofMismatch",
+      "msg": "Stat proof does not reconstruct the declared event stat root."
+    },
+    {
+      "code": 6002,
+      "name": "StatNotInFixture",
+      "msg": "Stat's event root is not the fixture's events subtree root."
+    },
+    {
+      "code": 6003,
+      "name": "MerkleRootMismatch",
+      "msg": "Fixture proof does not reconstruct the published daily root."
+    },
+    {
+      "code": 6004,
+      "name": "ArithmeticOverflow",
+      "msg": "Arithmetic overflow while combining stats."
+    },
+    {
+      "code": 6005,
+      "name": "TooManyStats",
+      "msg": "Too many stats in the payload."
+    },
+    {
+      "code": 6006,
+      "name": "MissingStat",
+      "msg": "Strategy references a stat index that is not present."
+    },
+    {
+      "code": 6007,
+      "name": "DuplicateStatCoverage",
+      "msg": "A stat index is evaluated more than once."
+    },
+    {
+      "code": 6008,
+      "name": "IncompleteStatCoverage",
+      "msg": "Not all stats in the payload were evaluated."
+    },
+    {
+      "code": 6009,
+      "name": "MissingDistancePredicate",
+      "msg": "Distance predicate is required when geometric targets are present."
+    }
+  ],
+  "types": [
+    {
+      "name": "BinaryExpression",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Add"
+          },
+          {
+            "name": "Subtract"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Comparison",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "GreaterThan"
+          },
+          {
+            "name": "LessThan"
+          },
+          {
+            "name": "EqualTo"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DailyScoresMerkleRoots",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "epoch_day",
+            "type": "u16"
+          },
+          {
+            "name": "root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "GeometricTarget",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "stat_index",
+            "type": "u8"
+          },
+          {
+            "name": "prediction",
+            "type": "i32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "NDimensionalStrategy",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "geometric_targets",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "GeometricTarget"
+                }
+              }
+            }
+          },
+          {
+            "name": "distance_predicate",
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "TraderPredicate"
+                }
+              }
+            }
+          },
+          {
+            "name": "discrete_predicates",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "StatPredicate"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProofNode",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "is_right_sibling",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ScoreStat",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "key",
+            "type": "u32"
+          },
+          {
+            "name": "value",
+            "type": "i32"
+          },
+          {
+            "name": "period",
+            "type": "i32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ScoresBatchSummary",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "fixture_id",
+            "type": "i64"
+          },
+          {
+            "name": "update_stats",
+            "type": {
+              "defined": {
+                "name": "ScoresUpdateStats"
+              }
+            }
+          },
+          {
+            "name": "events_sub_tree_root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ScoresUpdateStats",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "update_count",
+            "type": "i32"
+          },
+          {
+            "name": "min_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "max_timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "StatLeaf",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "stat",
+            "type": {
+              "defined": {
+                "name": "ScoreStat"
+              }
+            }
+          },
+          {
+            "name": "stat_proof",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "ProofNode"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "StatPredicate",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Single",
+            "fields": [
+              {
+                "name": "index",
+                "type": "u8"
+              },
+              {
+                "name": "predicate",
+                "type": {
+                  "defined": {
+                    "name": "TraderPredicate"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "Binary",
+            "fields": [
+              {
+                "name": "index_a",
+                "type": "u8"
+              },
+              {
+                "name": "index_b",
+                "type": "u8"
+              },
+              {
+                "name": "op",
+                "type": {
+                  "defined": {
+                    "name": "BinaryExpression"
+                  }
+                }
+              },
+              {
+                "name": "predicate",
+                "type": {
+                  "defined": {
+                    "name": "TraderPredicate"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "StatValidationInput",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "ts",
+            "type": "i64"
+          },
+          {
+            "name": "fixture_summary",
+            "type": {
+              "defined": {
+                "name": "ScoresBatchSummary"
+              }
+            }
+          },
+          {
+            "name": "fixture_proof",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "ProofNode"
+                }
+              }
+            }
+          },
+          {
+            "name": "main_tree_proof",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "ProofNode"
+                }
+              }
+            }
+          },
+          {
+            "name": "event_stat_root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "stats",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "StatLeaf"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "TraderPredicate",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "threshold",
+            "type": "i32"
+          },
+          {
+            "name": "comparison",
+            "type": {
+              "defined": {
+                "name": "Comparison"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

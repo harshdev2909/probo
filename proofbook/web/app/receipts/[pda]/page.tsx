@@ -10,7 +10,7 @@ import Link from "next/link";
 import * as anchor from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
 import { useConnection } from "@solana/wallet-adapter-react";
-import { api, type ProofReceipt, type MarketView } from "@/lib/api";
+import { api, type ReceiptView, type MarketView } from "@/lib/api";
 import { teamsForFixture } from "@/lib/teams";
 import idl from "@/lib/idl/proofbook.json";
 import { Receipt, type ReceiptData } from "@/components/Receipt";
@@ -20,7 +20,7 @@ import { QuarterLoader, ErrorState } from "@/components/primitives";
 export default function ReceiptPage({ params }: { params: Promise<{ pda: string }> }) {
   const { pda } = use(params);
   const { connection } = useConnection();
-  const [receipt, setReceipt] = useState<ProofReceipt | null>(null);
+  const [receipt, setReceipt] = useState<ReceiptView | null>(null);
   const [market, setMarket] = useState<MarketView | null>(null);
   const [err, setErr] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -66,8 +66,10 @@ export default function ReceiptPage({ params }: { params: Promise<{ pda: string 
       </main>
     );
 
-  const [home, away] = teamsForFixture(receipt.matchId, market.fixtureName);
-  const score = market.live?.score;
+  const [home, away] = teamsForFixture(receipt.matchId, market.fixtureName, market.home, market.away);
+  // The proven values win over anything the live feed reported: the feed's Score
+  // field is sampled and has been seen to disagree with what the proof attests.
+  const score = receipt.provenScore ?? market.live?.score;
   const data: ReceiptData = {
     matchId: receipt.matchId,
     homeCode: home.code,
@@ -76,7 +78,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ pda: string 
     outcomeLabel:
       receipt.winningOutcome === 0 ? `${home.code} win` : receipt.winningOutcome === 2 ? `${away.code} win` : "Draw",
     statKeys: "1, 2",
-    period: 100,
+    period: receipt.statPeriod ?? 100,
     epochDay: receipt.epochDay,
     dailyRootsPda: receipt.dailyRootsPda,
     proofRef: receipt.proofRef,

@@ -19,12 +19,13 @@ import { BetSlip } from "@/components/BetSlip";
 import { Ticker } from "@/components/Ticker";
 import { StaggerItem, Reveal } from "@/components/motion";
 import { QuarterLoader, ErrorState, Hash } from "@/components/primitives";
+import { PageArt } from "@/components/PageArt";
 
 export default function MarketDetail({ params }: { params: Promise<{ pda: string }> }) {
   const { pda } = use(params);
   const [market, setMarket] = useState<MarketView | null>(null);
   const [err, setErr] = useState(false);
-  const [live, setLive] = useState<MarketView["live"]>(null);
+  const [live, setLive] = useState<MarketView["live"] | null>(null);
 
   const load = () =>
     api
@@ -43,11 +44,12 @@ export default function MarketDetail({ params }: { params: Promise<{ pda: string
   useStreamEvent<ScoreEvent>("score", (e) => {
     if (!market || e.fixtureId !== market.fixtureId) return;
     setLive((prev) => ({
-      statusId: e.statusId ?? prev?.statusId,
+      statusId: e.statusId ?? prev?.statusId ?? null,
       lastSeq: e.seq,
+      // Feed events often carry only the scoring side, so merge rather than replace.
       score: e.score
         ? { p1: e.score.p1 ?? prev?.score?.p1 ?? 0, p2: e.score.p2 ?? prev?.score?.p2 ?? 0 }
-        : prev?.score,
+        : (prev?.score ?? null),
     }));
   });
 
@@ -71,6 +73,8 @@ export default function MarketDetail({ params }: { params: Promise<{ pda: string
 
   return (
     <main className="mx-auto w-full max-w-6xl px-6 pt-12 lg:px-10">
+      <PageArt src="/art-stadium.jpg" opacity={0.22} />
+
       {/* fixture header */}
       <header className="panel relative overflow-hidden p-7 md:p-10">
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">

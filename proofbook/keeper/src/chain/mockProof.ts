@@ -14,7 +14,9 @@ const keccak = (...parts: Buffer[]): Buffer =>
   Buffer.from(keccak_256.arrayBuffer(Buffer.concat(parts)));
 const leafHash = (b: Buffer) => keccak(Buffer.from("leaf:"), b);
 const combine = (node: Buffer, sib: Buffer, sibIsRight: boolean) =>
-  sibIsRight ? keccak(Buffer.from("node:"), node, sib) : keccak(Buffer.from("node:"), sib, node);
+  sibIsRight
+    ? keccak(Buffer.from("node:"), node, sib)
+    : keccak(Buffer.from("node:"), sib, node);
 
 function encScoreStat(key: number, value: number, period: number): Buffer {
   const b = Buffer.alloc(12);
@@ -82,5 +84,9 @@ export function buildMockProof(
     statBProof: [{ hash: Array.from(leafA), isRightSibling: false }],
   };
 
-  return { proof, dailyRoot: Array.from(dailyRoot), epochDay: epochDayOf(tsMs.toNumber()) };
+  return {
+    proof,
+    dailyRoot: Array.from(dailyRoot),
+    epochDay: epochDayOf(tsMs.toNumber()),
+  };
 }

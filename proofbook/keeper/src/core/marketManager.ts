@@ -3,7 +3,7 @@ import { PublicKey } from "@solana/web3.js";
 
 import { KeeperConfig } from "../config";
 import { Logger } from "../logger";
-import { Store, MarketRecord } from "../state";
+import { Store, MarketRecord, type StoreLike } from "../state";
 import { Chain, statusName } from "../chain/proofbook";
 import { FixtureInfo } from "../txline/client";
 
@@ -18,7 +18,11 @@ export class MarketManager extends EventEmitter {
   private usdcMint!: PublicKey;
   private sweeping = false;
 
-  constructor(private cfg: KeeperConfig, private store: Store, private chain: Chain) {
+  constructor(
+    private cfg: KeeperConfig,
+    private store: StoreLike,
+    private chain: Chain
+  ) {
     super();
   }
 
@@ -28,7 +32,10 @@ export class MarketManager extends EventEmitter {
   }
 
   /** Idempotently ensure a market exists for a fixture. */
-  async ensureMarket(fixture: FixtureInfo, lockTimeOverride?: number): Promise<MarketRecord | null> {
+  async ensureMarket(
+    fixture: FixtureInfo,
+    lockTimeOverride?: number
+  ): Promise<MarketRecord | null> {
     const { fixtureId } = fixture;
     const marketType = this.cfg.marketType;
     const pda = this.chain.marketPdaFor(fixtureId, marketType);
@@ -40,12 +47,18 @@ export class MarketManager extends EventEmitter {
     // On-chain check (state may have been wiped / another instance created it).
     const onchain = await this.chain.fetchMarket(pda);
     if (onchain) {
-      this.log.info("market already exists on-chain — adopting", { market: key, fixtureId });
+      this.log.info("market already exists on-chain — adopting", {
+        market: key,
+        fixtureId,
+      });
       const rec: MarketRecord = {
         marketPda: key,
         fixtureId,
         marketType,
-        phase: statusName(onchain.status) === "open" ? "created" : (statusName(onchain.status) as any),
+        phase:
+          statusName(onchain.status) === "open"
+            ? "created"
+            : (statusName(onchain.status) as any),
         lockTime: Number(onchain.lockTime),
         resolutionTimeout: Number(onchain.resolutionTimeout),
         usdcMint: onchain.usdcMint.toBase58(),
@@ -59,19 +72,29 @@ export class MarketManager extends EventEmitter {
     const now = Math.floor(Date.now() / 1000);
     const lockTime = lockTimeOverride ?? fixture.kickoffTs ?? 0;
     if (!lockTime || lockTime <= now + 5) {
-      this.log.warn("skipping market creation — kickoff/lock time not in the future", {
-        fixtureId, kickoffTs: fixture.kickoffTs,
-      });
+      this.log.warn(
+        "skipping market creation — kickoff/lock time not in the future",
+        {
+          fixtureId,
+          kickoffTs: fixture.kickoffTs,
+        }
+      );
       return null;
     }
 
     this.log.info("creating market", {
-      fixtureId, name: fixture.name, market: key,
+      fixtureId,
+      name: fixture.name,
+      market: key,
       lockTime: new Date(lockTime * 1000).toISOString(),
       resolutionTimeoutSec: this.cfg.resolutionTimeoutSec,
     });
     const { sig } = await this.chain.initializeMarket(
-      fixtureId, marketType, this.usdcMint, lockTime, this.cfg.resolutionTimeoutSec
+      fixtureId,
+      marketType,
+      this.usdcMint,
+      lockTime,
+      this.cfg.resolutionTimeoutSec
     );
     const rec: MarketRecord = {
       marketPda: key,
@@ -86,7 +109,13 @@ export class MarketManager extends EventEmitter {
     this.store.data.markets[key] = rec;
     const fs = this.store.fixture(fixtureId);
     fs.name = fixture.name ?? fs.name;
+    // Persist the participant names, not just the display string: the API
+    // resolves teams (codes, flags) from these. Without them an autonomously
+    // created market renders with no teams at all.
+    fs.homeName = fixture.p1Name ?? fs.homeName;
+    fs.awayName = fixture.p2Name ?? fs.awayName;
     fs.kickoffTs = lockTime;
+    fs.proofStatus = fs.proofStatus ?? "upcoming";
     fs.competitionId = fixture.competitionId ?? fs.competitionId;
     this.store.saveSoon();
     this.log.info("market created", { market: key, tx: sig });
@@ -117,11 +146,15 @@ export class MarketManager extends EventEmitter {
               const sig = await this.chain.lockMarket(pda);
               rec.phase = "locked";
               rec.lockTx = sig;
-              this.log.info("market locked (betting closed)", { market: rec.marketPda, tx: sig });
+              this.log.info("market locked (betting closed)", {
+                market: rec.marketPda,
+                tx: sig,
+              });
               this.emit("market", rec);
             } catch (e: any) {
               this.log.warn("lock failed (will retry on next sweep)", {
-                market: rec.marketPda, error: e?.error?.errorCode?.code || e?.message,
+                market: rec.marketPda,
+                error: e?.error?.errorCode?.code || e?.message,
               });
             }
           } else if (st === "locked") {
@@ -132,23 +165,35 @@ export class MarketManager extends EventEmitter {
         }
 
         // Liveness backstop: LOUD, permissionless, time-triggered.
-        if ((rec.phase === "locked" || rec.phase === "settling" || rec.phase === "error") &&
-            now > rec.lockTime + rec.resolutionTimeout) {
+        if (
+          (rec.phase === "locked" ||
+            rec.phase === "settling" ||
+            rec.phase === "error") &&
+          now > rec.lockTime + rec.resolutionTimeout
+        ) {
           const onchain = await this.chain.fetchMarket(pda);
           const st = onchain ? statusName(onchain.status) : null;
           if (st === "locked") {
-            this.log.error("CANCEL BACKSTOP FIRING — market unresolved past lock_time + resolution_timeout; cancelling so users can refund", {
-              market: rec.marketPda, fixtureId: rec.fixtureId,
-            });
+            this.log.error(
+              "CANCEL BACKSTOP FIRING — market unresolved past lock_time + resolution_timeout; cancelling so users can refund",
+              {
+                market: rec.marketPda,
+                fixtureId: rec.fixtureId,
+              }
+            );
             try {
               const sig = await this.chain.cancelMarket(pda);
               rec.phase = "cancelled";
               rec.cancelTx = sig;
-              this.log.error("market CANCELLED — refunds open", { market: rec.marketPda, tx: sig });
+              this.log.error("market CANCELLED — refunds open", {
+                market: rec.marketPda,
+                tx: sig,
+              });
               this.emit("market", rec);
             } catch (e: any) {
               this.log.warn("cancel backstop failed (will retry)", {
-                market: rec.marketPda, error: e?.error?.errorCode?.code || e?.message,
+                market: rec.marketPda,
+                error: e?.error?.errorCode?.code || e?.message,
               });
             }
             this.store.saveSoon();

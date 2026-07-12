@@ -15,7 +15,7 @@ import { TeamRow } from "./Flag";
 import { LiveBadge } from "./Score";
 
 export function FixtureCard({ market }: { market: MarketView }) {
-  const [home, away] = teamsForFixture(market.fixtureId, market.fixtureName);
+  const [home, away] = teamsForFixture(market.fixtureId, market.fixtureName, market.home, market.away);
   const [live, setLive] = useState(market.live);
 
   useStreamEvent<ScoreEvent>("score", (e) => {
@@ -33,6 +33,9 @@ export function FixtureCard({ market }: { market: MarketView }) {
   const playing = isLivePhase(live?.statusId);
   const done = market.status === "settled" || market.status === "cancelled" || live?.statusId === 100;
   const winner = market.winningOutcome;
+  // Played, but TxLINE can no longer prove it. We show the fixture and say so —
+  // we never invent a scoreline or a receipt to fill the hole.
+  const gap = market.proofStatus === "no_proof";
 
   return (
     <Link
@@ -50,16 +53,31 @@ export function FixtureCard({ market }: { market: MarketView }) {
           <LiveBadge label={phaseLabel(live?.statusId)} />
         ) : (
           <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-ink-400">
-            {done ? (market.status === "cancelled" ? "VOID" : "FT") : kickoffLabel(market.lockTime)}
+            {gap
+              ? "PLAYED"
+              : done
+                ? market.status === "cancelled" ? "VOID" : "FT"
+                : kickoffLabel(market.lockTime)}
           </span>
         )}
         <span className="font-mono text-[10px] text-ink-500">
-          {market.status === "open" ? `pool ${usdc(market.totalPool, { compact: true })}` : market.status}
+          {gap
+            ? "no proof"
+            : market.status === "open"
+              ? `pool ${usdc(market.totalPool, { compact: true })}`
+              : market.status}
         </span>
       </div>
 
       {/* implied bar. the crowd's live opinion */}
-      {market.status === "open" && Number(market.totalPool) > 0 && (
+      {gap && (
+        <p className="col-span-2 mt-3.5 border-t border-dashed border-hairline pt-3 text-[11px] text-ink-500">
+          This match was played, but it falls outside the window where its result can
+          still be proven. No receipt, and we won&apos;t fake one.
+        </p>
+      )}
+
+      {!gap && market.status === "open" && Number(market.totalPool) > 0 && (
         <div className="col-span-2 mt-4">
           <div className="flex h-[3px] w-full gap-px overflow-hidden" aria-hidden>
             {market.crowdImplied.map((p, i) => (

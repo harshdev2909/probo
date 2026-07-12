@@ -1,6 +1,6 @@
 import { KeeperConfig } from "../config";
 import { Logger } from "../logger";
-import { Store } from "../state";
+import { Store, type StoreLike } from "../state";
 import { Chain } from "../chain/proofbook";
 import { TxLineSession } from "../txline/session";
 import { TxLineClient, ScoreUpdate } from "../txline/client";
@@ -9,6 +9,9 @@ import { ReplayFeed, ReplayFixture, loadReplayFixture } from "../txline/replay";
 import { MarketManager } from "./marketManager";
 import { Settler } from "./settler";
 import { ApiServer } from "../api/server";
+import { PgStore, emitEvent } from "../pgstore";
+import { Leader } from "../leader";
+import { DbSync } from "../db/sync";
 
 /**
  * The keeper orchestrator — the autonomous off-chain brain.
@@ -19,7 +22,7 @@ import { ApiServer } from "../api/server";
  */
 export class Keeper {
   log = new Logger("keeper");
-  store: Store;
+  store: StoreLike;
   chain: Chain;
   markets: MarketManager;
   settler: Settler;
@@ -30,8 +33,20 @@ export class Keeper {
   private replayFixture?: ReplayFixture;
   private timers: NodeJS.Timeout[] = [];
 
-  constructor(public cfg: KeeperConfig) {
-    this.store = new Store(cfg.dataDir);
+  private leader?: Leader;
+  private sync?: DbSync;
+
+  /**
+   * Postgres-backed keepers must load their store asynchronously, so construction
+   * goes through here. `new Keeper(cfg)` still works for replay/local (JSON store).
+   */
+  static async create(cfg: KeeperConfig): Promise<Keeper> {
+    const store = cfg.databaseUrl ? await PgStore.open() : undefined;
+    return new Keeper(cfg, store);
+  }
+
+  constructor(public cfg: KeeperConfig, store?: StoreLike) {
+    this.store = store ?? new Store(cfg.dataDir);
     this.chain = new Chain(cfg, this.store);
     this.markets = new MarketManager(cfg, this.store, this.chain);
     this.api = new ApiServer(cfg, this.store, this.chain);
@@ -40,16 +55,39 @@ export class Keeper {
       this.session = new TxLineSession(cfg, this.store, this.chain);
       this.client = new TxLineClient(this.session);
     } else {
-      if (!cfg.replayFile) throw new Error("replay mode requires REPLAY_FILE / --file");
+      if (!cfg.replayFile)
+        throw new Error("replay mode requires REPLAY_FILE / --file");
       this.replayFixture = loadReplayFixture(cfg.replayFile);
     }
-    this.settler = new Settler(cfg, this.store, this.chain, this.client, this.replayFixture);
+    this.settler = new Settler(
+      cfg,
+      this.store,
+      this.chain,
+      this.client,
+      this.replayFixture
+    );
 
     // Fan settlement + market updates out to API stream subscribers, and keep
     // the indexer cache hot on every state change.
-    const onMarketEvent = (type: string) => (m: unknown) => {
+    const onMarketEvent = (type: string) => (m: any) => {
+      // The in-process broadcast only reaches the keeper's own API (replay/local).
       this.api.broadcast(type, m);
       void this.api.refreshMarkets().catch(() => {});
+
+      // Postgres is how a SEPARATE, stateless API instance learns anything
+      // happened — without this the deployed site's live feed is silent.
+      if (this.cfg.databaseUrl) {
+        void emitEvent(type, m, {
+          fixtureId: m?.fixtureId ?? m?.matchId,
+          marketPda: m?.marketPda,
+        });
+        if (type === "receipt") {
+          void this.sync
+            ?.heartbeat({ lastSettlementAt: new Date() })
+            .catch(() => {});
+          void this.sync?.fullSync().catch(() => {});
+        }
+      }
     };
     this.settler.on("receipt", onMarketEvent("receipt"));
     this.settler.on("market", onMarketEvent("market"));
@@ -57,14 +95,43 @@ export class Keeper {
   }
 
   async start() {
-    this.log.info("keeper starting", { mode: this.cfg.mode, oracle: this.cfg.oracleMode });
+    this.log.info("keeper starting", {
+      mode: this.cfg.mode,
+      oracle: this.cfg.oracleMode,
+      store: this.cfg.databaseUrl ? "postgres" : "json",
+    });
+
+    if (this.cfg.databaseUrl) {
+      // ONE keeper acts. A second instance (a rolling deploy, a stray local run)
+      // blocks here as a follower and never writes. settle_market is idempotent
+      // on-chain, but the read-then-write around it is not — two keepers racing it
+      // would burn fees and corrupt the store's mirror.
+      this.leader = new Leader(this.cfg.databaseUrl, async () => {});
+      await this.leader.run();
+
+      this.sync = new DbSync(this.cfg, this.chain, this.cfg.instanceId);
+      await this.sync.heartbeat({ streamConnected: false });
+      await this.sync.fullSync();
+      this.timers.push(setInterval(() => void this.sync!.fullSync(), 10_000));
+      this.timers.push(
+        setInterval(() => void this.sync!.heartbeat().catch(() => {}), 15_000)
+      );
+    } else {
+      // No database: this is the self-contained local/replay demo, so the keeper
+      // serves its own read API.
+      this.api.start();
+      this.timers.push(
+        setInterval(
+          () => void this.api.refreshMarkets().catch(() => {}),
+          10_000
+        )
+      );
+    }
+
     await this.markets.init();
-    this.api.start();
 
     // Sweeper: lock + cancel backstop.
     this.timers.push(setInterval(() => void this.markets.sweep(), 5_000));
-    // Indexer: refresh the on-chain market cache for the read API.
-    this.timers.push(setInterval(() => void this.api.refreshMarkets().catch(() => {}), 10_000));
 
     if (this.cfg.mode === "live") await this.startLive();
     else await this.startReplay();
@@ -75,14 +142,21 @@ export class Keeper {
 
     const syncFixtures = async () => {
       try {
-        const fixtures = await this.client!.fixturesSnapshot(this.cfg.competitionId);
+        const fixtures = await this.client!.fixturesSnapshot(
+          this.cfg.competitionId
+        );
         for (const f of fixtures) {
           await this.markets.ensureMarket(f).catch((e) =>
-            this.log.warn("ensureMarket failed", { fixture: f.fixtureId, error: e?.message })
+            this.log.warn("ensureMarket failed", {
+              fixture: f.fixtureId,
+              error: e?.message,
+            })
           );
         }
       } catch (e: any) {
-        this.log.warn("fixture sync failed (will retry)", { error: e?.message });
+        this.log.warn("fixture sync failed (will retry)", {
+          error: e?.message,
+        });
       }
     };
     await syncFixtures();
@@ -92,34 +166,45 @@ export class Keeper {
     stream.on("update", (u: ScoreUpdate) => this.ingest(u));
     stream.start();
     this.feed = stream;
-    this.log.info("live pipeline running — markets will lock and settle themselves");
+    this.log.info(
+      "live pipeline running — markets will lock and settle themselves"
+    );
   }
 
   private async startReplay() {
     const fx = this.replayFixture!;
     this.log.info("replay pipeline", {
-      fixture: fx.fixtureId, name: fx.name,
+      fixture: fx.fixtureId,
+      name: fx.name,
       final: `${fx.finalScore.p1}-${fx.finalScore.p2}`,
       provenance: fx.provenance?.note,
     });
 
     // Create the market with a near-future lock (the on-camera betting window).
-    const lockTime = Math.floor(Date.now() / 1000) + this.cfg.replayLockDelaySec;
+    const lockTime =
+      Math.floor(Date.now() / 1000) + this.cfg.replayLockDelaySec;
     const rec = await this.markets.ensureMarket(
       { fixtureId: fx.fixtureId, name: fx.name, raw: {} },
       lockTime
     );
     if (!rec) throw new Error("replay market creation failed");
-    this.log.info(`betting window open for ${this.cfg.replayLockDelaySec}s — place your bets`, {
-      market: rec.marketPda,
-    });
+    this.log.info(
+      `betting window open for ${this.cfg.replayLockDelaySec}s — place your bets`,
+      {
+        market: rec.marketPda,
+      }
+    );
 
     // Kick off the feed only once the market locks (mirrors a real kickoff).
     const waitForLock = setInterval(() => {
       const m = this.store.data.markets[rec.marketPda];
       if (m && (m.phase === "locked" || m.phase === "settling")) {
         clearInterval(waitForLock);
-        const feed = new ReplayFeed(fx, this.cfg.replaySpeed, this.cfg.replayMaxGapMs);
+        const feed = new ReplayFeed(
+          fx,
+          this.cfg.replaySpeed,
+          this.cfg.replayMaxGapMs
+        );
         feed.on("update", (u: ScoreUpdate) => this.ingest(u));
         feed.on("end", () => this.log.info("replay feed ended"));
         feed.start();
@@ -132,7 +217,8 @@ export class Keeper {
   /** Single ingest path for live SSE and replay events. */
   ingest(u: ScoreUpdate) {
     const fx = this.store.fixture(u.fixtureId);
-    if (fx.lastSeq !== undefined && u.seq <= fx.lastSeq && u.statusId !== 100) return; // stale/dup
+    if (fx.lastSeq !== undefined && u.seq <= fx.lastSeq && u.statusId !== 100)
+      return; // stale/dup
     fx.lastSeq = u.seq;
     fx.lastTs = u.ts;
     if (u.statusId !== undefined) fx.statusId = u.statusId;
@@ -145,16 +231,35 @@ export class Keeper {
     }
     fx.lastUpdateAt = new Date().toISOString();
     this.store.saveSoon();
-    this.api.broadcast("score", {
-      fixtureId: u.fixtureId, seq: u.seq, statusId: u.statusId, score: u.score, ts: u.ts,
-    });
+    const scoreEvent = {
+      fixtureId: u.fixtureId,
+      seq: u.seq,
+      statusId: u.statusId,
+      score: u.score,
+      ts: u.ts,
+    };
+    this.api.broadcast("score", scoreEvent);
+    if (this.cfg.databaseUrl) {
+      void emitEvent("score", scoreEvent, {
+        fixtureId: u.fixtureId,
+        seq: u.seq,
+      });
+      void this.sync
+        ?.heartbeat({ streamConnected: true, lastEventAt: new Date() })
+        .catch(() => {});
+    }
 
     if (u.statusId === 100 && fx.finalisedSeq === undefined) {
       fx.finalisedSeq = u.seq;
       this.store.saveSoon();
-      this.log.info("game_finalised (statusId=100) — the method-agnostic final", {
-        fixture: u.fixtureId, seq: u.seq, score: fx.score ? `${fx.score.p1}-${fx.score.p2}` : "?",
-      });
+      this.log.info(
+        "game_finalised (statusId=100) — the method-agnostic final",
+        {
+          fixture: u.fixtureId,
+          seq: u.seq,
+          score: fx.score ? `${fx.score.p1}-${fx.score.p2}` : "?",
+        }
+      );
       this.settler.onFinalised(u.fixtureId, u.seq);
     }
   }

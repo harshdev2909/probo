@@ -25,7 +25,10 @@ export function marketPda(
 }
 
 export function vaultPda(programId: PublicKey, market: PublicKey): PublicKey {
-  return PublicKey.findProgramAddressSync([VAULT_SEED, market.toBuffer()], programId)[0];
+  return PublicKey.findProgramAddressSync(
+    [VAULT_SEED, market.toBuffer()],
+    programId
+  )[0];
 }
 
 export function positionPda(
@@ -43,8 +46,14 @@ export function epochDayOf(tsMs: number): number {
   return Math.floor(tsMs / MS_PER_DAY);
 }
 
-export function dailyRootsPda(oracleProgram: PublicKey, epochDay: number): PublicKey {
+export function dailyRootsPda(
+  oracleProgram: PublicKey,
+  epochDay: number
+): PublicKey {
   const le = Buffer.alloc(2);
   le.writeUInt16LE(epochDay & 0xffff, 0);
-  return PublicKey.findProgramAddressSync([DAILY_SCORES_SEED, le], oracleProgram)[0];
+  return PublicKey.findProgramAddressSync(
+    [DAILY_SCORES_SEED, le],
+    oracleProgram
+  )[0];
 }

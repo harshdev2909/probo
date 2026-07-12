@@ -8,9 +8,19 @@
  */
 import * as anchor from "@coral-xyz/anchor";
 import { BN } from "@coral-xyz/anchor";
-import { Keypair, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import {
-  createMint, getOrCreateAssociatedTokenAccount, mintTo, getAccount, TOKEN_PROGRAM_ID,
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+  LAMPORTS_PER_SOL,
+} from "@solana/web3.js";
+import {
+  createMint,
+  getOrCreateAssociatedTokenAccount,
+  mintTo,
+  getAccount,
+  TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { assert } from "chai";
 import * as fs from "fs";
@@ -27,12 +37,17 @@ const API = "http://127.0.0.1:8791";
 const USDC = (n: number) => new BN(n).mul(new BN(1_000_000));
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-async function until<T>(what: string, fn: () => Promise<T | null>, timeoutMs: number): Promise<T> {
+async function until<T>(
+  what: string,
+  fn: () => Promise<T | null>,
+  timeoutMs: number
+): Promise<T> {
   const t0 = Date.now();
   for (;;) {
     const v = await fn().catch(() => null);
     if (v) return v;
-    if (Date.now() - t0 > timeoutMs) throw new Error(`timeout waiting for: ${what}`);
+    if (Date.now() - t0 > timeoutMs)
+      throw new Error(`timeout waiting for: ${what}`);
     await sleep(1000);
   }
 }
@@ -55,12 +70,28 @@ describe("keeper E2E — autonomous lifecycle (replay, mock oracle)", () => {
     usdcMint = await createMint(connection, payer, payer.publicKey, null, 6);
     for (const w of [alice, bob]) {
       const tx = new Transaction().add(
-        SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: w.publicKey, lamports: 2 * LAMPORTS_PER_SOL })
+        SystemProgram.transfer({
+          fromPubkey: payer.publicKey,
+          toPubkey: w.publicKey,
+          lamports: 2 * LAMPORTS_PER_SOL,
+        })
       );
       await provider.sendAndConfirm(tx, []);
-      const ata = await getOrCreateAssociatedTokenAccount(connection, payer, usdcMint, w.publicKey);
+      const ata = await getOrCreateAssociatedTokenAccount(
+        connection,
+        payer,
+        usdcMint,
+        w.publicKey
+      );
       atas.set(w.publicKey.toBase58(), ata.address);
-      await mintTo(connection, payer, usdcMint, ata.address, payer, BigInt(USDC(10_000).toString()));
+      await mintTo(
+        connection,
+        payer,
+        usdcMint,
+        ata.address,
+        payer,
+        BigInt(USDC(10_000).toString())
+      );
     }
 
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "keeper-e2e-"));
@@ -143,12 +174,21 @@ describe("keeper E2E — autonomous lifecycle (replay, mock oracle)", () => {
       },
       150_000
     );
-    assert.equal(settled.winningOutcome, 2, "Away must win (recorded final 1-4)");
+    assert.equal(
+      settled.winningOutcome,
+      2,
+      "Away must win (recorded final 1-4)"
+    );
 
-    const { data: receipt } = await axios.get(`${API}/receipts/${marketPdaStr}`);
+    const { data: receipt } = await axios.get(
+      `${API}/receipts/${marketPdaStr}`
+    );
     assert.equal(receipt.matchId, FIXTURE_ID);
     assert.equal(receipt.outcomeLabel, "Away");
-    assert.equal(receipt.oracleProgram, keeper.chain.oracleProgramId.toBase58());
+    assert.equal(
+      receipt.oracleProgram,
+      keeper.chain.oracleProgramId.toBase58()
+    );
     assert.isString(receipt.settleTx);
     assert.isAbove(receipt.settleTx.length, 40);
     assert.equal(receipt.resolver, payer.publicKey.toBase58()); // the keeper wallet
@@ -195,10 +235,15 @@ describe("keeper E2E — autonomous lifecycle (replay, mock oracle)", () => {
     } catch (e: any) {
       bobFailed = /NotAWinningPosition/.test(e.toString());
     }
-    assert.isTrue(bobFailed, "loser claim must revert with NotAWinningPosition");
+    assert.isTrue(
+      bobFailed,
+      "loser claim must revert with NotAWinningPosition"
+    );
 
     // Positions visible via the read API.
-    const { data: positions } = await axios.get(`${API}/positions/${alice.publicKey.toBase58()}`);
+    const { data: positions } = await axios.get(
+      `${API}/positions/${alice.publicKey.toBase58()}`
+    );
     assert.equal(positions.length, 1);
     assert.isTrue(positions[0].claimed);
   });

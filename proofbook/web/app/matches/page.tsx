@@ -23,7 +23,7 @@ export default function Matches() {
 
   const load = () =>
     api
-      .markets()
+      .allMarkets()
       .then((m) => {
         setMarkets(m);
         setState("ready");

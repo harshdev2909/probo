@@ -53,7 +53,9 @@ export class ScoresStream extends EventEmitter {
           }
           return fetch(input, { ...init, headers });
         };
-        let res = await attempt(this.session.headers().Authorization.replace("Bearer ", ""));
+        let res = await attempt(
+          this.session.headers().Authorization.replace("Bearer ", "")
+        );
         if (res.status === 401 || res.status === 403) {
           this.log.warn(`SSE rejected (${res.status}); renewing JWT`);
           const jwt = await this.session.renewJwt();
@@ -69,12 +71,15 @@ export class ScoresStream extends EventEmitter {
     };
 
     this.es.onmessage = (event: MessageEvent) => {
-      if ((event as any).lastEventId) this.lastEventId = (event as any).lastEventId;
+      if ((event as any).lastEventId)
+        this.lastEventId = (event as any).lastEventId;
       let parsed: any;
       try {
         parsed = JSON.parse(String(event.data));
       } catch {
-        this.log.debug("non-JSON SSE payload (heartbeat?)", { data: String(event.data).slice(0, 120) });
+        this.log.debug("non-JSON SSE payload (heartbeat?)", {
+          data: String(event.data).slice(0, 120),
+        });
         return;
       }
       const records = Array.isArray(parsed) ? parsed : [parsed];
@@ -82,18 +87,26 @@ export class ScoresStream extends EventEmitter {
         const u = normalizeUpdate(raw);
         if (u) {
           this.log.info("event", {
-            fixture: u.fixtureId, seq: u.seq, status: u.statusId,
-            score: u.score ? `${u.score.p1 ?? "?"}-${u.score.p2 ?? "?"}` : undefined,
+            fixture: u.fixtureId,
+            seq: u.seq,
+            status: u.statusId,
+            score: u.score
+              ? `${u.score.p1 ?? "?"}-${u.score.p2 ?? "?"}`
+              : undefined,
           });
           this.emit("update", u satisfies ScoreUpdate);
         } else {
-          this.log.debug("unrecognized record", { raw: JSON.stringify(raw).slice(0, 200) });
+          this.log.debug("unrecognized record", {
+            raw: JSON.stringify(raw).slice(0, 200),
+          });
         }
       }
     };
 
     this.es.onerror = (err: any) => {
-      this.log.warn("stream error/drop", { message: err?.message || String(err?.code || err) });
+      this.log.warn("stream error/drop", {
+        message: err?.message || String(err?.code || err),
+      });
       this.es?.close();
       if (this.stopped) return;
       const delay = this.backoffMs;

@@ -7,3 +7,9 @@ test-ledger
 .yarn
 .surfpool
 keeper/data
+
+# secrets and local artefacts — never commit these
+backups
+.env
+db/generated
+web/.env.local

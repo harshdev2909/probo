@@ -50,7 +50,9 @@ export class ReplayFeed extends EventEmitter {
 
   start() {
     const events = [...this.fixture.events].sort(
-      (a, b) => (a.Ts ?? a.ts ?? 0) - (b.Ts ?? b.ts ?? 0) || (a.Seq ?? a.seq ?? 0) - (b.Seq ?? b.seq ?? 0)
+      (a, b) =>
+        (a.Ts ?? a.ts ?? 0) - (b.Ts ?? b.ts ?? 0) ||
+        (a.Seq ?? a.seq ?? 0) - (b.Seq ?? b.seq ?? 0)
     );
     this.log.info("replay starting", {
       fixture: this.fixture.fixtureId,
@@ -71,15 +73,23 @@ export class ReplayFeed extends EventEmitter {
       const u = normalizeUpdate(raw);
       if (u) {
         this.log.info("event", {
-          fixture: u.fixtureId, seq: u.seq, status: u.statusId,
-          score: u.score ? `${u.score.p1 ?? "?"}-${u.score.p2 ?? "?"}` : undefined,
+          fixture: u.fixtureId,
+          seq: u.seq,
+          status: u.statusId,
+          score: u.score
+            ? `${u.score.p1 ?? "?"}-${u.score.p2 ?? "?"}`
+            : undefined,
         });
         this.emit("update", u satisfies ScoreUpdate);
       }
       const prevTs = raw.Ts ?? raw.ts ?? 0;
       i += 1;
-      const nextTs = i < events.length ? events[i].Ts ?? events[i].ts ?? prevTs : prevTs;
-      const gap = Math.max(0, Math.min((nextTs - prevTs) / this.speed, this.maxGapMs));
+      const nextTs =
+        i < events.length ? events[i].Ts ?? events[i].ts ?? prevTs : prevTs;
+      const gap = Math.max(
+        0,
+        Math.min((nextTs - prevTs) / this.speed, this.maxGapMs)
+      );
       this.timer = setTimeout(step, gap);
     };
     step();

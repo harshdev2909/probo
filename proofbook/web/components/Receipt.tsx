@@ -24,6 +24,14 @@ export interface ReceiptData {
   specimen?: boolean;
 }
 
+/** 5 = full time · 10 = after extra time · 13 = after penalties · 100 = finalised. */
+const PERIOD_LABEL: Record<number, string> = {
+  5: "full time",
+  10: "after extra time",
+  13: "after penalties",
+  100: "finalised",
+};
+
 /** A mono key/value row on the certificate. */
 function Field({
   k,
@@ -149,7 +157,10 @@ export function Receipt({ data, onVerify }: { data: ReceiptData; onVerify?: () =
 
         {/* the cryptographic body */}
         <section className="px-7 py-5">
-          <Field k="Stat keys" v={`${data.statKeys} @ period ${data.period} (game_finalised)`} />
+          <Field
+            k="Stat keys"
+            v={`${data.statKeys} @ period ${data.period} (${PERIOD_LABEL[data.period] ?? "terminal"})`}
+          />
           <Field k="Epoch day" v={String(data.epochDay)} />
           <Field k="Daily roots" v={data.dailyRootsPda} expandable />
           <Field k="Proof ref" v={data.proofRef} expandable />

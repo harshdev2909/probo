@@ -9,6 +9,7 @@ import { api, type MarketView, type PositionView } from "@/lib/api";
 import { teamsForFixture } from "@/lib/teams";
 import { usdc } from "@/lib/format";
 import { claim } from "@/lib/anchor";
+import { PageArt } from "@/components/PageArt";
 import { StaggerItem } from "@/components/motion";
 import { QuarterLoader, EmptyState } from "@/components/primitives";
 
@@ -58,6 +59,8 @@ export default function Portfolio() {
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 pt-12 lg:px-10">
+      <PageArt src="/art-portfolio.jpg" opacity={0.24} />
+
       <h1 className="display text-[clamp(34px,5vw,54px)] text-ink-100">Portfolio</h1>
       <p className="mt-2 mb-10 text-[13px] text-ink-400">
         Your bets, all in one place. Winnings are claimable the moment the result is verified.

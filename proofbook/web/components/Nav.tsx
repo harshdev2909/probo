@@ -14,8 +14,12 @@ const WalletButton = dynamic(
 
 const LINKS = [
   ["/matches", "Matches"],
+  ["/receipts", "Receipts"],
+  ["/bracket", "Bracket"],
+  ["/standings", "Groups"],
   ["/portfolio", "Portfolio"],
   ["/keeper", "Keeper"],
+  ["/status", "Status"],
 ] as const;
 
 export function Nav() {
@@ -23,11 +27,11 @@ export function Nav() {
   const status = useStreamStatus();
   return (
     <header className="sticky top-0 z-40 border-b border-hairline bg-ink-950/92 backdrop-blur-[2px]">
-      <nav className="mx-auto flex h-16 w-full max-w-6xl items-center gap-8 px-6 lg:px-10">
+      <nav className="mx-auto flex h-16 w-full max-w-6xl items-center gap-6 px-6 lg:px-10">
         <Link href="/" aria-label="Probo home" className="shrink-0">
           <Wordmark />
         </Link>
-        <div className="hidden gap-6 sm:flex">
+        <div className="hidden gap-5 md:flex">
           {LINKS.map(([href, label]) => (
             <Link
               key={href}

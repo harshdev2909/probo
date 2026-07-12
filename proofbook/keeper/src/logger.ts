@@ -28,7 +28,11 @@ function emit(rec: LogRecord) {
       console.log(JSON.stringify(rec));
     } else {
       const f = rec.fields ? " " + JSON.stringify(rec.fields) : "";
-      console.log(`${rec.ts} ${rec.level.toUpperCase().padEnd(5)} [${rec.component}] ${rec.msg}${f}`);
+      console.log(
+        `${rec.ts} ${rec.level.toUpperCase().padEnd(5)} [${rec.component}] ${
+          rec.msg
+        }${f}`
+      );
     }
   }
   logBus.emit("log", rec);
@@ -40,7 +44,13 @@ export class Logger {
     return new Logger(`${this.component}:${sub}`);
   }
   private rec(level: Level, msg: string, fields?: Record<string, unknown>) {
-    emit({ ts: new Date().toISOString(), level, component: this.component, msg, fields });
+    emit({
+      ts: new Date().toISOString(),
+      level,
+      component: this.component,
+      msg,
+      fields,
+    });
   }
   debug(msg: string, fields?: Record<string, unknown>) {
     this.rec("debug", msg, fields);

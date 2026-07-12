@@ -19,12 +19,18 @@ import { Mark } from "@/components/Mark";
 
 const T = { kicker: 0, line: 0.08, lineStep: 0.09, sub: 0.35, receipt: 0.5 };
 
+/**
+ * A genuine devnet settlement — the proof ref, resolver and settle tx below are
+ * all real and checkable on Solscan. The teams are the ones TxLINE itself names
+ * for this fixture (United States v Belgium); an earlier hardcoded fixture map
+ * had this labelled MEX v USA, which was simply wrong.
+ */
 const REAL_RECEIPT = {
   matchId: 18193785,
-  homeCode: "MEX",
-  awayCode: "USA",
+  homeCode: "USA",
+  awayCode: "BEL",
   finalScore: { home: 1, away: 4 },
-  outcomeLabel: "Away win",
+  outcomeLabel: "BEL win",
   statKeys: "1, 2",
   period: 100,
   epochDay: 20641,
@@ -44,7 +50,7 @@ export default function Landing() {
   const [teasers, setTeasers] = useState<MarketView[]>([]);
   useEffect(() => {
     api
-      .markets()
+      .allMarkets()
       .then((ms) => setTeasers(ms.filter((m) => m.status !== "cancelled").slice(0, 2)))
       .catch(() => {});
   }, []);

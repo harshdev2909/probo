@@ -1,0 +1,261 @@
+
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Whether a fixture's result can be PROVEN from TxLINE.
+enum ProofStatus {
+  /// A real merkle proof exists; the market settles and earns a Receipt.
+  proven
+  /// Outside TxLINE's retention window. We show the fixture, we do NOT show a
+  /// scoreline, and we never fabricate a receipt.
+  no_proof
+  /// Not played yet.
+  upcoming
+}
+
+enum MarketStatus {
+  open
+  locked
+  settled
+  cancelled
+}
+
+/// The 48-team field. Taken verbatim from the participants TxLINE reports —
+/// never from memory. `chip` is a confederation colour, never a flag or emblem.
+model Team {
+  code   String @id @db.VarChar(3)
+  name   String @unique
+  iso    String
+  confed String
+  chip   String
+
+  homeFixtures Fixture[] @relation("HomeTeam")
+  awayFixtures Fixture[] @relation("AwayTeam")
+
+  @@map("teams")
+}
+
+model Fixture {
+  /// TxLINE fixture id.
+  id            Int     @id
+  competitionId Int?
+  /// Raw TxLINE participant names — the source of truth for team identity.
+  homeName      String
+  awayName      String
+  homeCode      String? @db.VarChar(3)
+  awayCode      String? @db.VarChar(3)
+  /// Group | R32 | R16 | QF | SF | 3rd | Final
+  stage         String
+  kickoffTs     DateTime @db.Timestamptz(3)
+
+  proofStatus ProofStatus @default(upcoming)
+  /// Why we cannot prove it (only set when proofStatus = no_proof).
+  gapReason   String?
+
+  /// Live feed phase. 5 = FT, 10 = AET, 13 = pens, 100 = game_finalised.
+  statusId     Int?
+  /// PROVEN goals only. The feed's own `Score` field is sampled and has been
+  /// observed to disagree with the proof, so it never lands here.
+  provenP1     Int?
+  provenP2     Int?
+  lastSeq      Int?
+  lastTs       BigInt?
+  finalisedSeq Int?
+
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  homeTeam Team? @relation("HomeTeam", fields: [homeCode], references: [code])
+  awayTeam Team? @relation("AwayTeam", fields: [awayCode], references: [code])
+
+  markets Market[]
+  events  FeedEvent[]
+
+  @@index([stage])
+  @@index([kickoffTs])
+  @@index([proofStatus])
+  @@map("fixtures")
+}
+
+model Market {
+  /// Market PDA — the primary key everything else hangs off.
+  pda        String @id
+  fixtureId  Int
+  marketType Int
+
+  status            MarketStatus @default(open)
+  lockTime          DateTime @db.Timestamptz(3)
+  resolutionTimeout Int
+  feeBps            Int
+
+  usdcMint      String
+  vault         String
+  authority     String
+  oracleProgram String
+
+  /// Denormalised pool state, refreshed by the keeper. The API never reads chain.
+  totalPool        BigInt   @default(0)
+  pools            BigInt[]
+  totalWinningPool BigInt?
+  feeAmount        BigInt?
+  winningOutcome   Int?
+
+  createdTx String?
+  lockTx    String?
+  settleTx  String?
+  cancelTx  String?
+  settledAt DateTime? @db.Timestamptz(3)
+
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  fixture   Fixture        @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  receipt   Receipt?
+  positions Position[]
+  odds      OddsSnapshot[]
+
+  @@unique([fixtureId, marketType])
+  @@index([status])
+  @@index([marketType])
+  @@index([fixtureId])
+  @@index([lockTime])
+  @@map("markets")
+}
+
+model Position {
+  /// Position PDA.
+  pda          String  @id
+  marketPda    String
+  owner        String
+  outcomeIndex Int
+  amount       BigInt
+  claimed      Boolean @default(false)
+
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  market Market @relation(fields: [marketPda], references: [pda], onDelete: Cascade)
+
+  @@index([owner])
+  @@index([marketPda])
+  @@map("positions")
+}
+
+/// The Proof Receipt. Every field is a cached copy of on-chain state — the
+/// settle transaction is the authority, this row is only how we serve it fast.
+model Receipt {
+  marketPda String @id
+  fixtureId Int
+
+  winningOutcome Int
+  outcomeLabel   String
+  /// The goals the merkle proof actually attests. Absent = we could not prove it,
+  /// and then there is no receipt at all.
+  provenP1       Int?
+  provenP2       Int?
+  /// Which stat period was proven: 5 FT, 10 AET, 13 pens, 100 finalised.
+  statPeriod     Int?
+
+  oracleProgram String
+  epochDay      Int
+  dailyRootsPda String
+  /// Hex events-subtree root — the anchor into TxLINE's daily merkle root.
+  proofRef      String
+  resolver      String
+  settleTx      String
+  settledAt     DateTime @db.Timestamptz(3)
+
+  totalPool        BigInt
+  totalWinningPool BigInt
+  feeAmount        BigInt
+
+  market Market @relation(fields: [marketPda], references: [pda], onDelete: Cascade)
+
+  @@index([settledAt])
+  @@index([fixtureId])
+  @@map("receipts")
+}
+
+/// Append-only feed of everything the keeper saw or did. Backs the SSE stream:
+/// the keeper INSERTs and NOTIFYs, every API instance LISTENs and fans out, so
+/// the API stays stateless and horizontally scalable.
+model FeedEvent {
+  id        BigInt   @id @default(autoincrement())
+  /// score | market | receipt | keeper | log
+  type      String
+  fixtureId Int?
+  marketPda String?
+  seq       Int?
+  payload   Json
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  fixture Fixture? @relation(fields: [fixtureId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([type, createdAt])
+  @@index([fixtureId])
+  @@map("feed_events")
+}
+
+/// Pool history, so the crowd's opinion over time is a real series and not a
+/// single sampled number.
+model OddsSnapshot {
+  id        BigInt   @id @default(autoincrement())
+  marketPda String
+  pools     BigInt[]
+  totalPool BigInt
+  takenAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  market Market @relation(fields: [marketPda], references: [pda], onDelete: Cascade)
+
+  @@index([marketPda, takenAt])
+  @@map("odds_snapshots")
+}
+
+/// Keeper liveness. The public status page reads this — if the keeper dies on
+/// Final night, this is what says so.
+model KeeperRun {
+  id       String @id @default(uuid())
+  instance String
+  mode     String
+  version  String?
+
+  isLeader         Boolean   @default(false)
+  streamConnected  Boolean   @default(false)
+  startedAt        DateTime  @default(now()) @db.Timestamptz(3)
+  lastHeartbeat    DateTime  @default(now()) @db.Timestamptz(3)
+  lastEventAt      DateTime? @db.Timestamptz(3)
+  lastSettlementAt DateTime? @db.Timestamptz(3)
+  marketsSettled   Int       @default(0)
+  lastError        String?
+
+  @@index([lastHeartbeat])
+  @@map("keeper_runs")
+}
+
+/// Faucet ledger. Devnet demo funds, but still rate-limited and capped — an
+/// open mint endpoint is an open invitation.
+model FaucetGrant {
+  wallet      String   @id
+  grants      Int      @default(0)
+  totalUsdc   BigInt   @default(0)
+  lastGrantAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([lastGrantAt])
+  @@map("faucet_grants")
+}
+
+/// Small keeper-owned key/value (TxLINE session tokens, the escrow mint).
+/// Never read by the API.
+model KeyValue {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@map("kv")
+}

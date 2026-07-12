@@ -4,6 +4,7 @@ import "./globals.css";
 import { StreamProvider } from "@/lib/stream";
 import { SolanaProviders } from "@/lib/wallet";
 import { Nav } from "@/components/Nav";
+import { Onboarding } from "@/components/Onboarding";
 import { BallCursor } from "@/components/Cursor";
 import { Mark } from "@/components/Mark";
 
@@ -43,6 +44,7 @@ export default function RootLayout({
         <SolanaProviders>
           <StreamProvider>
             <Nav />
+            <Onboarding />
             <div className="flex-1">{children}</div>
             <footer className="rule mt-24">
               <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-8 lg:px-10">

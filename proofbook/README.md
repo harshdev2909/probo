@@ -477,3 +477,70 @@ cd web && npm run dev
 #   NEXT_PUBLIC_KEEPER_API=http://localhost:8787
 #   NEXT_PUBLIC_RPC=http://127.0.0.1:8899   # devnet URL for live mode
 ```
+
+---
+
+## The real tournament (`demo:seed`)
+
+The product ships populated with the **actual** World Cup: every fixture TxLINE
+reports, real teams, real groups, real bracket — and every match that can still be
+proven is settled on devnet by a **real merkle proof**, not by an admin.
+
+```bash
+npm run demo:seed     # coverage -> markets -> liquidity -> backfill settlement
+```
+
+One idempotent command, four steps:
+
+| step | what it does |
+|---|---|
+| `coverage` | asks TxLINE which fixtures it can still **prove**; writes [`docs/COVERAGE.md`](docs/COVERAGE.md) + `keeper/data/plan.json` |
+| `seed:markets` | one market per fixture, each pinned to the stat period its own proof needs (5 / 10 / 13 / 100) |
+| `seed:liquidity` | stakes all three outcomes **atomically** from three demo wallets |
+| `backfill` | locks and settles every provable fixture by CPI into the live TxLINE oracle |
+
+### Why liquidity has to exist before settlement
+
+`settle_market` routes a market with a **zero-stake winning outcome** to
+`Cancelled (refundable)` — correct, since there is nobody to pay. But it means an
+unbet market can never reach `Settled`, and so never earns a Proof Receipt. The
+three bets are placed in a single transaction so a market can never end up
+half-booked with one outcome left empty.
+
+Stakes are seeded from the fixture id, so the book is identical on every run. The
+weights never look at the true result, so the crowd is wrong about as often as a
+real crowd is — which is the point: the crowd is an opinion, the proof is not.
+
+### Configuration (`keeper/.env`)
+
+The keeper reads `keeper/.env` for the store and the market generation, so a plain
+`npm run keeper:live` finds the seeded tournament. Explicit env always wins, so the
+local-validator demo is unaffected.
+
+```ini
+KEEPER_DATA_DIR=keeper/data/devnet
+MARKET_TYPE=3          # generation the seeder WRITES to
+MARKET_TYPES=3,4       # generations the reader SURFACES
+```
+
+Devnet keeps every market ever created and they cannot be deleted, so generations
+accumulate. The reader takes an allowlist and shows **one market per fixture** — a
+settled market always beats an unsettled duplicate. Point the keeper at the wrong
+generation and it serves markets with no teams and no pools, which looks like a
+frontend bug but is really a config mismatch.
+
+### Honest gaps — the rule we do not break
+
+TxLINE keeps the data needed to prove a score for a limited window (~23 days).
+Older fixtures fall outside it. For those matches we show the fixture and say
+plainly that it cannot be proven.
+
+**We never fabricate a receipt, a scoreline, or an admin settlement to fill the
+hole.** A single invented receipt would falsify the only claim this product makes.
+So the group tables count unprovable matches as unplayed and label themselves
+`N/6 proven`, the bracket leaves those ties blank, and the Receipt Gallery lists
+them under *"No receipt · and we won't pretend otherwise"*.
+
+The headline number, and the honest remainder, live in
+[`docs/COVERAGE.md`](docs/COVERAGE.md) — regenerated on every run, with the
+settle-transaction signature for every fixture.

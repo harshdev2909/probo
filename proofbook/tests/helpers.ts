@@ -23,7 +23,11 @@ export function leafHash(bytes: Buffer): Buffer {
 }
 
 /** Combine a node with a sibling. `sibIsRight` => sibling is the right child. */
-export function combine(node: Buffer, sib: Buffer, sibIsRight: boolean): Buffer {
+export function combine(
+  node: Buffer,
+  sib: Buffer,
+  sibIsRight: boolean
+): Buffer {
   return sibIsRight
     ? keccak(Buffer.from("node:"), node, sib)
     : keccak(Buffer.from("node:"), sib, node);
@@ -38,7 +42,11 @@ function i32le(n: number): Buffer {
 }
 
 /** borsh(ScoreStat { key: u32, value: i32, period: i32 }) */
-export function encScoreStat(key: number, value: number, period: number): Buffer {
+export function encScoreStat(
+  key: number,
+  value: number,
+  period: number
+): Buffer {
   const b = Buffer.alloc(12);
   b.writeUInt32LE(key >>> 0, 0);
   b.writeInt32LE(value, 4);
@@ -83,23 +91,38 @@ export function marketPda(
   marketType: number
 ): PublicKey {
   return PublicKey.findProgramAddressSync(
-    [MARKET_SEED, authority.toBuffer(), fixtureId.toArrayLike(Buffer, "le", 8), Buffer.from([marketType])],
+    [
+      MARKET_SEED,
+      authority.toBuffer(),
+      fixtureId.toArrayLike(Buffer, "le", 8),
+      Buffer.from([marketType]),
+    ],
     programId
   )[0];
 }
 
 export function vaultPda(programId: PublicKey, market: PublicKey): PublicKey {
-  return PublicKey.findProgramAddressSync([VAULT_SEED, market.toBuffer()], programId)[0];
+  return PublicKey.findProgramAddressSync(
+    [VAULT_SEED, market.toBuffer()],
+    programId
+  )[0];
 }
 
-export function positionPda(programId: PublicKey, market: PublicKey, owner: PublicKey): PublicKey {
+export function positionPda(
+  programId: PublicKey,
+  market: PublicKey,
+  owner: PublicKey
+): PublicKey {
   return PublicKey.findProgramAddressSync(
     [POSITION_SEED, market.toBuffer(), owner.toBuffer()],
     programId
   )[0];
 }
 
-export function dailyRootsPda(mockProgramId: PublicKey, epochDay: number): PublicKey {
+export function dailyRootsPda(
+  mockProgramId: PublicKey,
+  epochDay: number
+): PublicKey {
   return PublicKey.findProgramAddressSync(
     [DAILY_SCORES_SEED, u16le(epochDay)],
     mockProgramId
@@ -161,7 +184,13 @@ export function buildProof(
     eventsSubTreeRoot: Array.from(subRoot),
   };
 
-  const fixtureBytes = encFixtureSummary(fixtureId, updateCount, tsMs, tsMs, subRoot);
+  const fixtureBytes = encFixtureSummary(
+    fixtureId,
+    updateCount,
+    tsMs,
+    tsMs,
+    subRoot
+  );
   const dailyRoot = leafHash(fixtureBytes);
 
   // v2: one shared `eventStatRoot` for the whole batch (== events subtree root).
@@ -178,7 +207,11 @@ export function buildProof(
     statBProof: [{ hash: Array.from(leafA), isRightSibling: false }],
   };
 
-  return { proof, dailyRoot: Array.from(dailyRoot), epochDay: epochDayOf(tsMs) };
+  return {
+    proof,
+    dailyRoot: Array.from(dailyRoot),
+    epochDay: epochDayOf(tsMs),
+  };
 }
 
 // ── Misc ─────────────────────────────────────────────────────────────────────
@@ -186,7 +219,9 @@ export function buildProof(
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Current on-chain unix time (seconds), polled from the cluster. */
-export async function onchainNow(connection: anchor.web3.Connection): Promise<number> {
+export async function onchainNow(
+  connection: anchor.web3.Connection
+): Promise<number> {
   const slot = await connection.getSlot();
   let t = await connection.getBlockTime(slot);
   while (t === null) {

@@ -47,7 +47,10 @@ describe("proofbook — trustless World Cup prediction market", () => {
   const payer = (provider.wallet as anchor.Wallet).payer;
 
   // Cast to `any`: the IDL is loaded at runtime, so method/account access is dynamic.
-  const program = new anchor.Program(proofbookIdl as anchor.Idl, provider) as any;
+  const program = new anchor.Program(
+    proofbookIdl as anchor.Idl,
+    provider
+  ) as any;
   const mock = new anchor.Program(mockOracleIdl as anchor.Idl, provider) as any;
 
   const alice = Keypair.generate();
@@ -64,7 +67,11 @@ describe("proofbook — trustless World Cup prediction market", () => {
   // ── validator-agnostic funding: transfer SOL from the (pre-funded) payer ────
   async function fund(pk: PublicKey, sol: number) {
     const tx = new Transaction().add(
-      SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: pk, lamports: sol * LAMPORTS_PER_SOL })
+      SystemProgram.transfer({
+        fromPubkey: payer.publicKey,
+        toPubkey: pk,
+        lamports: sol * LAMPORTS_PER_SOL,
+      })
     );
     await provider.sendAndConfirm(tx, []);
   }
@@ -81,7 +88,15 @@ describe("proofbook — trustless World Cup prediction market", () => {
     mint: PublicKey = usdcMint
   ) {
     await program.methods
-      .initializeMarket(fixtureId, 0, OUTCOMES_1X2, FEE_BPS, lockTime, resolutionTimeout, treasury.publicKey)
+      .initializeMarket(
+        fixtureId,
+        0,
+        OUTCOMES_1X2,
+        FEE_BPS,
+        lockTime,
+        resolutionTimeout,
+        treasury.publicKey
+      )
       .accounts({
         authority: payer.publicKey,
         market,
@@ -114,8 +129,19 @@ describe("proofbook — trustless World Cup prediction market", () => {
       .signers([bettor])
       .rpc();
   }
-  const placeBet = (market: PublicKey, bettor: Keypair, outcome: number, amount: BN) =>
-    placeBetWith(market, bettor, ata.get(bettor.publicKey.toBase58())!, outcome, amount);
+  const placeBet = (
+    market: PublicKey,
+    bettor: Keypair,
+    outcome: number,
+    amount: BN
+  ) =>
+    placeBetWith(
+      market,
+      bettor,
+      ata.get(bettor.publicKey.toBase58())!,
+      outcome,
+      amount
+    );
 
   async function lockMarket(market: PublicKey) {
     await program.methods
@@ -133,7 +159,12 @@ describe("proofbook — trustless World Cup prediction market", () => {
       })
       .rpc();
   }
-  async function settle(market: PublicKey, outcome: number, proof: any, epochDay: number) {
+  async function settle(
+    market: PublicKey,
+    outcome: number,
+    proof: any,
+    epochDay: number
+  ) {
     await program.methods
       .settleMarket(outcome, proof)
       .accounts({
@@ -142,7 +173,9 @@ describe("proofbook — trustless World Cup prediction market", () => {
         oracleProgram: mock.programId,
         oracleRoots: dailyRootsPda(mock.programId, epochDay),
       })
-      .preInstructions([ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 })])
+      .preInstructions([
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+      ])
       .rpc();
   }
   async function claimWinnings(market: PublicKey, winner: Keypair) {
@@ -198,11 +231,28 @@ describe("proofbook — trustless World Cup prediction market", () => {
     for (const b of bettors) await fund(b.publicKey, 3);
     usdcMint = await createMint(connection, payer, payer.publicKey, null, 6);
     for (const b of bettors) {
-      const acc = await getOrCreateAssociatedTokenAccount(connection, payer, usdcMint, b.publicKey);
+      const acc = await getOrCreateAssociatedTokenAccount(
+        connection,
+        payer,
+        usdcMint,
+        b.publicKey
+      );
       ata.set(b.publicKey.toBase58(), acc.address);
-      await mintTo(connection, payer, usdcMint, acc.address, payer, BigInt(USDC(10_000).toString()));
+      await mintTo(
+        connection,
+        payer,
+        usdcMint,
+        acc.address,
+        payer,
+        BigInt(USDC(10_000).toString())
+      );
     }
-    treasuryAta = await createAssociatedTokenAccount(connection, payer, usdcMint, treasury.publicKey);
+    treasuryAta = await createAssociatedTokenAccount(
+      connection,
+      payer,
+      usdcMint,
+      treasury.publicKey
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -223,7 +273,10 @@ describe("proofbook — trustless World Cup prediction market", () => {
       assert.equal(m.winningOutcome, 255);
       assert.equal(m.oracleProgram.toBase58(), mock.programId.toBase58());
       assert.equal(m.feeTreasury.toBase58(), treasury.publicKey.toBase58());
-      assert.equal(m.resolutionTimeout.toString(), RESOLUTION_TIMEOUT.toString());
+      assert.equal(
+        m.resolutionTimeout.toString(),
+        RESOLUTION_TIMEOUT.toString()
+      );
     });
 
     it("accepts bets on different outcomes and enforces the USDC mint", async () => {
@@ -234,18 +287,50 @@ describe("proofbook — trustless World Cup prediction market", () => {
 
       const m = await program.account.market.fetch(market);
       assert.equal(m.totalPool.toString(), USDC(1000).toString());
-      assert.equal(m.outcomes[OUTCOME_HOME_IDX].pool.toString(), USDC(800).toString());
-      assert.equal((await balance(vaultPda(program.programId, market))).toString(), USDC(1000).toString());
+      assert.equal(
+        m.outcomes[OUTCOME_HOME_IDX].pool.toString(),
+        USDC(800).toString()
+      );
+      assert.equal(
+        (await balance(vaultPda(program.programId, market))).toString(),
+        USDC(1000).toString()
+      );
 
       // Mint validation: a token account of a DIFFERENT mint is rejected.
-      const fakeMint = await createMint(connection, payer, payer.publicKey, null, 6);
-      const fakeAcc = await getOrCreateAssociatedTokenAccount(connection, payer, fakeMint, alice.publicKey);
-      await mintTo(connection, payer, fakeMint, fakeAcc.address, payer, BigInt(USDC(100).toString()));
+      const fakeMint = await createMint(
+        connection,
+        payer,
+        payer.publicKey,
+        null,
+        6
+      );
+      const fakeAcc = await getOrCreateAssociatedTokenAccount(
+        connection,
+        payer,
+        fakeMint,
+        alice.publicKey
+      );
+      await mintTo(
+        connection,
+        payer,
+        fakeMint,
+        fakeAcc.address,
+        payer,
+        BigInt(USDC(100).toString())
+      );
       try {
-        await placeBetWith(market, alice, fakeAcc.address, OUTCOME_HOME_IDX, USDC(10));
+        await placeBetWith(
+          market,
+          alice,
+          fakeAcc.address,
+          OUTCOME_HOME_IDX,
+          USDC(10)
+        );
         assert.fail("expected WrongMint");
       } catch (e: any) {
-        expect(e.toString()).to.match(/WrongMint|ConstraintTokenMint|AnchorError/);
+        expect(e.toString()).to.match(
+          /WrongMint|ConstraintTokenMint|AnchorError/
+        );
       }
 
       // Can't switch outcomes; zero amount rejected.
@@ -277,7 +362,9 @@ describe("proofbook — trustless World Cup prediction market", () => {
       const m = await program.account.market.fetch(market);
       await waitUntilOnchain(connection, m.lockTime.toNumber());
       await lockMarket(market);
-      assert.isDefined((await program.account.market.fetch(market)).status.locked);
+      assert.isDefined(
+        (await program.account.market.fetch(market)).status.locked
+      );
       try {
         await placeBet(market, alice, OUTCOME_HOME_IDX, USDC(1));
         assert.fail("expected MarketNotOpen");
@@ -298,7 +385,10 @@ describe("proofbook — trustless World Cup prediction market", () => {
       // Proof Receipt recorded on-chain.
       assert.equal(m.settleEpochDay, epochDay);
       assert.equal(m.settleResolver.toBase58(), payer.publicKey.toBase58());
-      assert.equal(m.settleDailyRoots.toBase58(), dailyRootsPda(mock.programId, epochDay).toBase58());
+      assert.equal(
+        m.settleDailyRoots.toBase58(),
+        dailyRootsPda(mock.programId, epochDay).toBase58()
+      );
     });
 
     it("cannot be settled twice", async () => {
@@ -319,11 +409,17 @@ describe("proofbook — trustless World Cup prediction market", () => {
 
       await claimWinnings(market, alice);
       await claimWinnings(market, bob);
-      assert.equal((await balance(aliceAta)) - aliceBefore, BigInt("712500000")); // 600/800*950
+      assert.equal(
+        (await balance(aliceAta)) - aliceBefore,
+        BigInt("712500000")
+      ); // 600/800*950
       assert.equal((await balance(bobAta)) - bobBefore, BigInt("237500000")); //   200/800*950
 
       // Vault now holds exactly the fee (winners were paid exactly the distributable).
-      assert.equal((await balance(vaultPda(program.programId, market))).toString(), USDC(50).toString());
+      assert.equal(
+        (await balance(vaultPda(program.programId, market))).toString(),
+        USDC(50).toString()
+      );
 
       for (const loser of [carol, dave]) {
         try {
@@ -351,9 +447,15 @@ describe("proofbook — trustless World Cup prediction market", () => {
     it("withdraws the fee to the treasury exactly once, leaving the vault empty", async () => {
       const before = await balance(treasuryAta);
       await withdrawFees(market);
-      assert.equal((await balance(treasuryAta)) - before, BigInt(USDC(50).toString()));
+      assert.equal(
+        (await balance(treasuryAta)) - before,
+        BigInt(USDC(50).toString())
+      );
       // Vault is now exactly zero: winners + fee == total_pool.
-      assert.equal((await balance(vaultPda(program.programId, market))).toString(), "0");
+      assert.equal(
+        (await balance(vaultPda(program.programId, market))).toString(),
+        "0"
+      );
       assert.isTrue((await program.account.market.fetch(market)).feeWithdrawn);
       // No second withdrawal.
       try {
@@ -400,9 +502,13 @@ describe("proofbook — trustless World Cup prediction market", () => {
         await settle(market, OUTCOME_HOME_IDX, proof, epochDay);
         assert.fail("expected verification failure");
       } catch (e: any) {
-        expect(e.toString()).to.match(/StatProofMismatch|custom program error|0x/);
+        expect(e.toString()).to.match(
+          /StatProofMismatch|custom program error|0x/
+        );
       }
-      assert.isDefined((await program.account.market.fetch(market)).status.locked);
+      assert.isDefined(
+        (await program.account.market.fetch(market)).status.locked
+      );
     });
 
     it("rejects a valid proof that does not satisfy the claimed outcome", async () => {
@@ -413,13 +519,17 @@ describe("proofbook — trustless World Cup prediction market", () => {
       } catch (e: any) {
         expect(e.toString()).to.match(/OutcomeNotVerified/);
       }
-      assert.isDefined((await program.account.market.fetch(market)).status.locked);
+      assert.isDefined(
+        (await program.account.market.fetch(market)).status.locked
+      );
     });
 
     it("settles when the correct outcome is proven", async () => {
       const { proof, epochDay } = buildProof(3, 0, FIXTURE, TS);
       await settle(market, OUTCOME_HOME_IDX, proof, epochDay);
-      assert.isDefined((await program.account.market.fetch(market)).status.settled);
+      assert.isDefined(
+        (await program.account.market.fetch(market)).status.settled
+      );
     });
   });
 
@@ -460,7 +570,12 @@ describe("proofbook — trustless World Cup prediction market", () => {
     });
 
     it("refuses to settle or re-cancel a cancelled market", async () => {
-      const { proof, epochDay } = buildProof(1, 0, FIXTURE, new BN(1_700_600_000_000));
+      const { proof, epochDay } = buildProof(
+        1,
+        0,
+        FIXTURE,
+        new BN(1_700_600_000_000)
+      );
       try {
         await settle(market, OUTCOME_HOME_IDX, proof, epochDay);
         assert.fail("expected AlreadyResolved (settle)");
@@ -486,7 +601,10 @@ describe("proofbook — trustless World Cup prediction market", () => {
       await check(bob, USDC(50));
       await check(carol, USDC(50));
       // Vault emptied exactly (no fee ever taken on a cancelled market).
-      assert.equal((await balance(vaultPda(program.programId, market))).toString(), "0");
+      assert.equal(
+        (await balance(vaultPda(program.programId, market))).toString(),
+        "0"
+      );
       // Double-refund rejected.
       try {
         await claimRefund(market, alice);
@@ -543,7 +661,10 @@ describe("proofbook — trustless World Cup prediction market", () => {
         await claimRefund(market, u);
         assert.equal((await balance(acc)) - before, BigInt(amt.toString()));
       }
-      assert.equal((await balance(vaultPda(program.programId, market))).toString(), "0");
+      assert.equal(
+        (await balance(vaultPda(program.programId, market))).toString(),
+        "0"
+      );
       try {
         await withdrawFees(market);
         assert.fail("expected NotSettled (cancelled market has no fee)");
@@ -575,7 +696,12 @@ describe("proofbook — trustless World Cup prediction market", () => {
       await lockMarket(market);
       const { dailyRoot, epochDay } = buildProof(2, 0, FIXTURE, TS);
       await publishRoot(dailyRoot, epochDay);
-      await settle(market, OUTCOME_HOME_IDX, proofOf(2, 0, FIXTURE, TS), epochDay);
+      await settle(
+        market,
+        OUTCOME_HOME_IDX,
+        proofOf(2, 0, FIXTURE, TS),
+        epochDay
+      );
     });
 
     function proofOf(a: number, b: number, f: BN, ts: BN) {
@@ -617,10 +743,28 @@ describe("proofbook — trustless World Cup prediction market", () => {
 
     before(async () => {
       await fund(whale.publicKey, 2);
-      const fMint = await createMint(connection, payer, payer.publicKey, null, 6);
-      const wAcc = await getOrCreateAssociatedTokenAccount(connection, payer, fMint, whale.publicKey);
+      const fMint = await createMint(
+        connection,
+        payer,
+        payer.publicKey,
+        null,
+        6
+      );
+      const wAcc = await getOrCreateAssociatedTokenAccount(
+        connection,
+        payer,
+        fMint,
+        whale.publicKey
+      );
       ata.set(whale.publicKey.toBase58(), wAcc.address);
-      await mintTo(connection, payer, fMint, wAcc.address, payer, BigInt(HUGE.toString()));
+      await mintTo(
+        connection,
+        payer,
+        fMint,
+        wAcc.address,
+        payer,
+        BigInt(HUGE.toString())
+      );
       const lockTime = new BN((await onchainNow(connection)) + 3600); // far off; stays Open
       await initMarket(market, FIXTURE, lockTime, RESOLUTION_TIMEOUT, fMint);
     });
@@ -629,8 +773,14 @@ describe("proofbook — trustless World Cup prediction market", () => {
       await placeBet(market, whale, OUTCOME_HOME_IDX, HUGE);
       const m = await program.account.market.fetch(market);
       assert.equal(m.totalPool.toString(), HUGE.toString());
-      assert.equal(m.outcomes[OUTCOME_HOME_IDX].pool.toString(), HUGE.toString());
-      assert.equal((await balance(vaultPda(program.programId, market))).toString(), HUGE.toString());
+      assert.equal(
+        m.outcomes[OUTCOME_HOME_IDX].pool.toString(),
+        HUGE.toString()
+      );
+      assert.equal(
+        (await balance(vaultPda(program.programId, market))).toString(),
+        HUGE.toString()
+      );
     });
   });
 

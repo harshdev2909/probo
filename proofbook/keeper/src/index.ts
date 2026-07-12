@@ -19,7 +19,7 @@ async function main() {
   };
 
   if (cmd === "live") {
-    const keeper = new Keeper(loadConfig("live"));
+    const keeper = await Keeper.create(loadConfig("live"));
     await keeper.start();
     hookShutdown(keeper, log);
     return;
@@ -33,7 +33,7 @@ async function main() {
     const overrides: any = { replayFile: file };
     if (flag("speed")) overrides.replaySpeed = Number(flag("speed"));
     if (flag("oracle")) overrides.oracleMode = flag("oracle");
-    const keeper = new Keeper(loadConfig("replay", overrides));
+    const keeper = await Keeper.create(loadConfig("replay", overrides));
     await keeper.start();
     hookShutdown(keeper, log);
     return;
@@ -43,14 +43,18 @@ async function main() {
     const fixtureId = Number(rest[0]);
     const epochDay = Number(rest[1]);
     if (!fixtureId || !epochDay) {
-      console.error("usage: keeper capture <fixtureId> <epochDay> [--out file.json]");
+      console.error(
+        "usage: keeper capture <fixtureId> <epochDay> [--out file.json]"
+      );
       process.exit(1);
     }
     await capture(loadConfig("live"), fixtureId, epochDay, flag("out"));
     process.exit(0);
   }
 
-  console.error("usage: keeper <live | replay [file] | capture <fixtureId> <epochDay>>");
+  console.error(
+    "usage: keeper <live | replay [file] | capture <fixtureId> <epochDay>>"
+  );
   process.exit(1);
 }
 

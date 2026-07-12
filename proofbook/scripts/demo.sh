@@ -13,6 +13,9 @@ RPC=http://127.0.0.1:8899
 export REPLAY_LOCK_DELAY_SEC="${REPLAY_LOCK_DELAY_SEC:-75}"
 export REPLAY_SPEED="${REPLAY_SPEED:-450}"
 export KEEPER_DATA_DIR="${TMPDIR:-/tmp}/proofbook-demo-keeper"
+# Pinned so keeper/.env (which points at the seeded devnet tournament) can never
+# leak into this self-contained local-validator demo.
+export MARKET_TYPE=0
 
 if [ ! -f target/deploy/proofbook.so ]; then
   echo "Building programs (mock-oracle adapter)…"

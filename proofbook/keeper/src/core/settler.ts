@@ -4,7 +4,7 @@ import { PublicKey } from "@solana/web3.js";
 
 import { KeeperConfig } from "../config";
 import { Logger } from "../logger";
-import { Store, ProofReceipt } from "../state";
+import { Store, ProofReceipt, type StoreLike } from "../state";
 import { Chain, statusName, OUTCOME_LABELS } from "../chain/proofbook";
 import { TxLineClient } from "../txline/client";
 import { dailyRootsPda, epochDayOf } from "../chain/pdas";
@@ -23,7 +23,7 @@ export class Settler extends EventEmitter {
 
   constructor(
     private cfg: KeeperConfig,
-    private store: Store,
+    private store: StoreLike,
     private chain: Chain,
     private client?: TxLineClient, // live mode
     private replayFixture?: ReplayFixture // replay mode
@@ -45,7 +45,9 @@ export class Settler extends EventEmitter {
     rec.settleAttempts = 0;
     this.store.saveSoon();
     this.log.info("finalisation detected — starting autonomous settlement", {
-      fixtureId, seq, market: rec.marketPda,
+      fixtureId,
+      seq,
+      market: rec.marketPda,
     });
     void this.attempt(rec.marketPda, fixtureId, seq);
   }
@@ -62,7 +64,10 @@ export class Settler extends EventEmitter {
       if (!onchain) throw new Error("market account missing on-chain");
       const st = statusName(onchain.status);
       if (st === "settled" || st === "cancelled") {
-        this.log.info(`market already ${st} on-chain — recording and stopping`, { market: marketPdaStr });
+        this.log.info(
+          `market already ${st} on-chain — recording and stopping`,
+          { market: marketPdaStr }
+        );
         await this.recordResolution(marketPdaStr, onchain, rec.settleTx || "");
         this.inFlight.delete(marketPdaStr);
         return;
@@ -73,15 +78,27 @@ export class Settler extends EventEmitter {
       const { proof, epochDay, p1, p2 } = await this.buildProof(fixtureId, seq);
       const claimed = p1 > p2 ? 0 : p1 < p2 ? 2 : 1;
       this.log.info("submitting settle_market", {
-        market: marketPdaStr, attempt: n, epochDay,
-        final: `${p1}-${p2}`, claimedOutcome: OUTCOME_LABELS[claimed],
+        market: marketPdaStr,
+        attempt: n,
+        epochDay,
+        final: `${p1}-${p2}`,
+        claimedOutcome: OUTCOME_LABELS[claimed],
         oracle: this.chain.oracleProgramId.toBase58(),
       });
 
-      const sig = await this.chain.settleMarket(market, claimed, proof, epochDay);
-      this.log.info("SETTLED — trustlessly, via oracle proof. no human clicked resolve.", {
-        market: marketPdaStr, tx: sig,
-      });
+      const sig = await this.chain.settleMarket(
+        market,
+        claimed,
+        proof,
+        epochDay
+      );
+      this.log.info(
+        "SETTLED — trustlessly, via oracle proof. no human clicked resolve.",
+        {
+          market: marketPdaStr,
+          tx: sig,
+        }
+      );
       const settled = await this.chain.fetchMarket(market);
       await this.recordResolution(marketPdaStr, settled, sig);
       this.inFlight.delete(marketPdaStr);
@@ -90,29 +107,50 @@ export class Settler extends EventEmitter {
       if (e?.error?.errorCode?.code === "AlreadyResolved") {
         const onchain = await this.chain.fetchMarket(market).catch(() => null);
         if (onchain) {
-          this.log.info("market was resolved out-of-band (cancel backstop?) — recording", { market: marketPdaStr });
-          await this.recordResolution(marketPdaStr, onchain, rec.settleTx || "");
+          this.log.info(
+            "market was resolved out-of-band (cancel backstop?) — recording",
+            { market: marketPdaStr }
+          );
+          await this.recordResolution(
+            marketPdaStr,
+            onchain,
+            rec.settleTx || ""
+          );
         }
         this.inFlight.delete(marketPdaStr);
         return;
       }
       const msg = errText(e);
       const retriable = isRetryable(e);
-      this.log.warn(`settle attempt ${n} failed`, { market: marketPdaStr, retriable, error: msg.slice(0, 300) });
+      this.log.warn(`settle attempt ${n} failed`, {
+        market: marketPdaStr,
+        retriable,
+        error: msg.slice(0, 300),
+      });
 
       if (!retriable || n >= this.cfg.settleMaxAttempts) {
         rec.phase = "error";
         rec.lastError = msg.slice(0, 500);
         this.store.saveSoon();
-        this.log.error("SETTLEMENT ERROR — retry budget exhausted or fatal error. The time-based cancel backstop will unlock refunds after the resolution timeout.", {
-          market: marketPdaStr, attempts: n,
-        });
+        this.log.error(
+          "SETTLEMENT ERROR — retry budget exhausted or fatal error. The time-based cancel backstop will unlock refunds after the resolution timeout.",
+          {
+            market: marketPdaStr,
+            attempts: n,
+          }
+        );
         this.emit("error-state", rec);
         this.inFlight.delete(marketPdaStr);
         return;
       }
-      const delay = Math.min(this.cfg.settleBaseDelayMs * 2 ** (n - 1), this.cfg.settleMaxDelayMs);
-      this.log.info(`retrying settlement in ${Math.round(delay / 1000)}s`, { market: marketPdaStr, nextAttempt: n + 1 });
+      const delay = Math.min(
+        this.cfg.settleBaseDelayMs * 2 ** (n - 1),
+        this.cfg.settleMaxDelayMs
+      );
+      this.log.info(`retrying settlement in ${Math.round(delay / 1000)}s`, {
+        market: marketPdaStr,
+        nextAttempt: n + 1,
+      });
       this.store.saveSoon();
       setTimeout(() => void this.attempt(marketPdaStr, fixtureId, seq), delay);
     }
@@ -121,19 +159,31 @@ export class Settler extends EventEmitter {
   private async buildProof(fixtureId: number, seq: number) {
     if (this.cfg.oracleMode === "mock") {
       const fx = this.replayFixture;
-      if (!fx || fx.fixtureId !== fixtureId) throw new Error("no replay recording for fixture");
+      if (!fx || fx.fixtureId !== fixtureId)
+        throw new Error("no replay recording for fixture");
       // Prefer the recorded REAL proof's stats as ground truth for the final.
       const stats = fx.realProof?.response?.statsToProve;
       const p1 = stats?.[0]?.value ?? fx.finalScore.p1;
       const p2 = stats?.[1]?.value ?? fx.finalScore.p2;
-      const tsMs = fx.realProof?.response?.summary?.updateStats?.minTimestamp ?? fx.finalisedTsMs;
-      const { proof, epochDay } = await this.chain.buildAndPublishMockProof(fixtureId, tsMs, p1, p2);
+      const tsMs =
+        fx.realProof?.response?.summary?.updateStats?.minTimestamp ??
+        fx.finalisedTsMs;
+      const { proof, epochDay } = await this.chain.buildAndPublishMockProof(
+        fixtureId,
+        tsMs,
+        p1,
+        p2
+      );
       return { proof, epochDay, p1, p2 };
     }
 
     // Live: fetch the real proof from TxLINE.
     if (!this.client) throw new Error("live mode requires a TxLine client");
-    const val = await this.client.statValidation(fixtureId, seq, this.cfg.statKeys as any);
+    const val = await this.client.statValidation(
+      fixtureId,
+      seq,
+      this.cfg.statKeys as any
+    );
     const p1 = val.statsToProve[0].value;
     const p2 = val.statsToProve[1].value;
     const tsMs = val.summary.updateStats.minTimestamp;
@@ -162,7 +212,11 @@ export class Settler extends EventEmitter {
   }
 
   /** Persist the Proof Receipt — the structured record the frontend renders. */
-  private async recordResolution(marketPdaStr: string, onchain: any, settleTx: string) {
+  private async recordResolution(
+    marketPdaStr: string,
+    onchain: any,
+    settleTx: string
+  ) {
     const rec = this.store.data.markets[marketPdaStr];
     const st = statusName(onchain.status);
     rec.phase = st === "settled" ? "settled" : "cancelled";
@@ -174,7 +228,9 @@ export class Settler extends EventEmitter {
         marketPda: marketPdaStr,
         matchId: Number(onchain.fixtureId),
         winningOutcome: onchain.winningOutcome,
-        outcomeLabel: OUTCOME_LABELS[onchain.winningOutcome] ?? String(onchain.winningOutcome),
+        outcomeLabel:
+          OUTCOME_LABELS[onchain.winningOutcome] ??
+          String(onchain.winningOutcome),
         oracleProgram: onchain.oracleProgram.toBase58(),
         epochDay: onchain.settleEpochDay,
         dailyRootsPda: onchain.settleDailyRoots.toBase58(),
@@ -196,15 +252,23 @@ export class Settler extends EventEmitter {
 }
 
 const toBytes32 = (v: any): number[] => {
-  const b = Array.isArray(v) ? Uint8Array.from(v)
-    : v instanceof Uint8Array ? v
-    : typeof v === "string" ? (v.startsWith("0x") ? Buffer.from(v.slice(2), "hex") : Buffer.from(v, "base64"))
+  const b = Array.isArray(v)
+    ? Uint8Array.from(v)
+    : v instanceof Uint8Array
+    ? v
+    : typeof v === "string"
+    ? v.startsWith("0x")
+      ? Buffer.from(v.slice(2), "hex")
+      : Buffer.from(v, "base64")
     : Uint8Array.from(v);
   if (b.length !== 32) throw new Error(`expected 32 bytes, got ${b.length}`);
   return Array.from(b);
 };
 const mapProof = (nodes: any[]) =>
-  nodes.map((n) => ({ hash: toBytes32(n.hash), isRightSibling: n.isRightSibling }));
+  nodes.map((n) => ({
+    hash: toBytes32(n.hash),
+    isRightSibling: n.isRightSibling,
+  }));
 
 function retryable(msg: string): Error {
   const e = new Error(msg);
@@ -230,11 +294,25 @@ function isRetryable(e: any): boolean {
   if ((e as any)?._retryable) return true;
   const code = e?.error?.errorCode?.code || "";
   if (["RootNotAvailable", "TimeSlotMismatch"].includes(code)) return true;
-  if (["AlreadyResolved", "NotLocked", "WrongOracleProgram", "OracleAdapterMismatch"].includes(code)) return false;
+  if (
+    [
+      "AlreadyResolved",
+      "NotLocked",
+      "WrongOracleProgram",
+      "OracleAdapterMismatch",
+    ].includes(code)
+  )
+    return false;
   if (e?.response) return true; // REST error (proof not ready, 5xx, auth blip)
   const m = (e?.message || "").toLowerCase();
-  if (m.includes("blockhash") || m.includes("timeout") || m.includes("timed out")) return true;
-  if (m.includes("fetch") || m.includes("network") || m.includes("econn")) return true;
+  if (
+    m.includes("blockhash") ||
+    m.includes("timeout") ||
+    m.includes("timed out")
+  )
+    return true;
+  if (m.includes("fetch") || m.includes("network") || m.includes("econn"))
+    return true;
   // Unknown on-chain errors: retry within budget (roots may lag), then ERROR.
   return true;
 }

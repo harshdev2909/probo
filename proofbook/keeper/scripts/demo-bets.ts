@@ -5,8 +5,20 @@
  */
 import * as anchor from "@coral-xyz/anchor";
 import { BN } from "@coral-xyz/anchor";
-import { Keypair, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, Connection } from "@solana/web3.js";
-import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import {
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+  LAMPORTS_PER_SOL,
+  Connection,
+} from "@solana/web3.js";
+import {
+  createMint,
+  getOrCreateAssociatedTokenAccount,
+  mintTo,
+  TOKEN_PROGRAM_ID,
+} from "@solana/spl-token";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -16,11 +28,22 @@ const ROOT = path.resolve(__dirname, "..", "..");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
-  const secret = JSON.parse(fs.readFileSync(process.env.ANCHOR_WALLET || `${process.env.HOME}/.config/solana/id.json`, "utf8"));
+  const secret = JSON.parse(
+    fs.readFileSync(
+      process.env.ANCHOR_WALLET || `${process.env.HOME}/.config/solana/id.json`,
+      "utf8"
+    )
+  );
   const payer = Keypair.fromSecretKey(Uint8Array.from(secret));
   const connection = new Connection(RPC, "confirmed");
-  const provider = new anchor.AnchorProvider(connection, new anchor.Wallet(payer), { commitment: "confirmed" });
-  const idl = JSON.parse(fs.readFileSync(path.join(ROOT, "target", "idl", "proofbook.json"), "utf8"));
+  const provider = new anchor.AnchorProvider(
+    connection,
+    new anchor.Wallet(payer),
+    { commitment: "confirmed" }
+  );
+  const idl = JSON.parse(
+    fs.readFileSync(path.join(ROOT, "target", "idl", "proofbook.json"), "utf8")
+  );
   const program = new anchor.Program(idl, provider) as any;
 
   // wait for an open market
@@ -30,7 +53,9 @@ async function main() {
       const res = await fetch(`${API}/markets`);
       const ms = (await res.json()) as any[];
       market = ms.find((m: any) => m.status === "open");
-    } catch { /* keeper booting */ }
+    } catch {
+      /* keeper booting */
+    }
     if (!market) await sleep(2000);
   }
   if (!market) throw new Error("no open market appeared");
@@ -38,25 +63,55 @@ async function main() {
 
   const mint = new PublicKey(market.usdcMint);
   const marketPk = new PublicKey(market.marketPda);
-  const [vault] = PublicKey.findProgramAddressSync([Buffer.from("vault"), marketPk.toBuffer()], program.programId);
+  const [vault] = PublicKey.findProgramAddressSync(
+    [Buffer.from("vault"), marketPk.toBuffer()],
+    program.programId
+  );
 
   const bet = async (name: string, outcome: number, amount: number) => {
     const w = Keypair.generate();
-    const t = new Transaction().add(SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: w.publicKey, lamports: LAMPORTS_PER_SOL }));
+    const t = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: payer.publicKey,
+        toPubkey: w.publicKey,
+        lamports: LAMPORTS_PER_SOL,
+      })
+    );
     await provider.sendAndConfirm(t, []);
-    const ata = await getOrCreateAssociatedTokenAccount(connection, payer, mint, w.publicKey);
-    await mintTo(connection, payer, mint, ata.address, payer, BigInt(amount * 1e6));
+    const ata = await getOrCreateAssociatedTokenAccount(
+      connection,
+      payer,
+      mint,
+      w.publicKey
+    );
+    await mintTo(
+      connection,
+      payer,
+      mint,
+      ata.address,
+      payer,
+      BigInt(amount * 1e6)
+    );
     const [position] = PublicKey.findProgramAddressSync(
-      [Buffer.from("position"), marketPk.toBuffer(), w.publicKey.toBuffer()], program.programId);
+      [Buffer.from("position"), marketPk.toBuffer(), w.publicKey.toBuffer()],
+      program.programId
+    );
     await program.methods
       .placeBet(outcome, new BN(amount * 1e6))
       .accounts({
-        bettor: w.publicKey, market: marketPk, position, bettorToken: ata.address,
-        vault, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId,
+        bettor: w.publicKey,
+        market: marketPk,
+        position,
+        bettorToken: ata.address,
+        vault,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
       })
       .signers([w])
       .rpc();
-    console.log(`[demo-bets] ${name} staked ${amount} USDC on outcome ${outcome}`);
+    console.log(
+      `[demo-bets] ${name} staked ${amount} USDC on outcome ${outcome}`
+    );
   };
 
   await bet("Alice", 2, 600); // Away — the recorded final is 1-4
@@ -64,4 +119,10 @@ async function main() {
   console.log("[demo-bets] done — the keeper takes it from here.");
 }
 
-main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });
+main().then(
+  () => process.exit(0),
+  (e) => {
+    console.error(e);
+    process.exit(1);
+  }
+);
