@@ -1,0 +1,25 @@
+{
+  "name": "proofbook-keeper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ProofBook keeper/indexer — autonomous market creation, live TxLINE ingestion, and trustless auto-settlement",
+  "scripts": {
+    "live": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P tsconfig.json src/index.ts live",
+    "replay": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P tsconfig.json src/index.ts replay",
+    "capture": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P tsconfig.json src/index.ts capture"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "0.32.1",
+    "@solana/spl-token": "0.4.14",
+    "@solana/web3.js": "1.98.4",
+    "axios": "1.7.9",
+    "eventsource": "4.1.0",
+    "js-sha3": "0.9.3",
+    "tweetnacl": "1.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.0",
+    "ts-node": "10.9.2",
+    "typescript": "5.7.3"
+  }
+}

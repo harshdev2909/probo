@@ -1,0 +1,45 @@
+[package]
+name = "proofbook"
+version = "0.1.0"
+description = "ProofBook — fully on-chain, trustlessly-settled World Cup prediction markets"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "proofbook"
+
+[features]
+# NOTE: `mock-oracle` is ON by default so `anchor build` + `cargo test` work out of
+# the box against the bundled mock oracle. PRODUCTION builds MUST disable it:
+#   devnet : anchor build -- --no-default-features
+#   mainnet: anchor build -- --no-default-features --features mainnet
+# Fail-safe: if a mock build is ever shipped to a real cluster, markets trust the
+# mock program id (absent there) so settlement CPIs simply fail — they can never
+# settle to a wrong outcome.
+default = ["mock-oracle"]
+mock-oracle = []
+mainnet = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = { version = "1.0.2", features = ["init-if-needed"] }
+anchor-spl = "1.0.2"
+
+[dev-dependencies]
+# math unit tests only need the crate itself; integration tests live in `tests/`
+# (TypeScript, run via `anchor test`). Kept for the scaffold's litesvm harness.
+litesvm = "0.10.0"
+solana-message = "3.0.1"
+solana-transaction = "3.0.2"
+solana-signer = "3.0.0"
+solana-keypair = "3.0.1"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

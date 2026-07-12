@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "types": ["node", "mocha"],
+    "lib": ["es2020"],
+    "module": "commonjs",
+    "target": "es2020",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": false
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}
