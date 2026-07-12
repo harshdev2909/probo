@@ -20,6 +20,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 import { KeeperConfig, ROOT } from "../config";
+import { keypairFromSecret } from "../../../shared/keys";
 import { Logger } from "../logger";
 import { Store, type StoreLike } from "../state";
 import { marketPda, vaultPda, positionPda, dailyRootsPda } from "./pdas";
@@ -98,14 +99,7 @@ function idlPath(name: string): string {
  */
 function loadKeypair(cfg: KeeperConfig): Keypair {
   if (cfg.walletSecret) {
-    const raw = cfg.walletSecret.trim();
-    if (raw.startsWith("[")) {
-      return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(raw)));
-    }
-    // base58 (what `solana-keygen` prints, and what most platforms paste cleanly)
-    const bs58 = require("bs58");
-    const decode = bs58.default?.decode ?? bs58.decode;
-    return Keypair.fromSecretKey(Uint8Array.from(decode(raw)));
+    return keypairFromSecret(cfg.walletSecret, "KEEPER_SECRET_KEY");
   }
   if (!fs.existsSync(cfg.walletPath)) {
     throw new Error(
@@ -163,12 +157,33 @@ export class Chain {
 
   /** Escrow mint: env-provided, persisted from a prior run, or auto-created. */
   async ensureUsdcMint(): Promise<PublicKey> {
-    if (this.cfg.usdcMint) return new PublicKey(this.cfg.usdcMint);
+    if (this.cfg.usdcMint) {
+      // Pinned by env. Make the store agree, so a stale `kv` row can't resurrect a
+      // wrong mint on the next boot.
+      if (this.store.data.mints.usdcMint !== this.cfg.usdcMint) {
+        this.store.data.mints.usdcMint = this.cfg.usdcMint;
+        this.store.saveSoon();
+      }
+      return new PublicKey(this.cfg.usdcMint);
+    }
     if (this.store.data.mints.usdcMint) {
       const pk = new PublicKey(this.store.data.mints.usdcMint);
       if (await this.connection.getAccountInfo(pk)) return pk;
       this.log.warn(
         "persisted usdcMint not found on-chain; creating a new one"
+      );
+    }
+    // A production keeper must NEVER invent an escrow mint. Booting against an
+    // empty database once did exactly that: it minted a fresh token, and any new
+    // market would then have escrowed a currency literally nobody holds — while
+    // the faucet handed out the real one. An empty `kv` means the database was
+    // never imported, and THAT is the bug. Fail loudly.
+    if (this.cfg.databaseUrl && !process.env.ALLOW_MINT_AUTOCREATE) {
+      throw new Error(
+        "Refusing to auto-create an escrow mint against a real database. The " +
+          "tournament's mint is missing from `kv` — the database was probably never " +
+          "imported (run `npm run db:import`). Pin the existing mint with USDC_MINT, " +
+          "or set ALLOW_MINT_AUTOCREATE=1 if you genuinely are bootstrapping a new one."
       );
     }
     const mint = await createMint(

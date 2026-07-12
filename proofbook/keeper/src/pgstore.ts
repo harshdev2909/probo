@@ -229,8 +229,11 @@ export class PgStore implements StoreLike {
 
     // The market row is created by syncMarkets() from chain state (it owns pools,
     // vault, mint...). Here we only carry the keeper's own bookkeeping across.
+    // updateMany, not update: `update` THROWS when no row matches. The market row
+    // is created by syncMarkets() from chain state, so before the first sync every
+    // flush threw and spammed prisma:error.
     await prisma.market
-      .update({
+      .updateMany({
         where: { pda: m.marketPda },
         data: {
           status,

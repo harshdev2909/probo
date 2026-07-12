@@ -30,6 +30,7 @@ import {
 } from "@solana/spl-token";
 
 import { prisma } from "../../db/src/client";
+import { keypairFromSecret } from "../../shared/keys";
 import type { FaucetResult } from "./contracts";
 
 const USDC_GRANT = Number(process.env.FAUCET_USDC ?? 10_000);
@@ -49,7 +50,7 @@ export class Faucet {
   constructor(rpcUrl: string, secret?: string, mint?: string) {
     this.conn = new Connection(rpcUrl, "confirmed");
     if (secret && mint) {
-      this.payer = loadKeypair(secret);
+      this.payer = keypairFromSecret(secret, "FAUCET_SECRET_KEY");
       this.mint = new PublicKey(mint);
       this.enabled = true;
     } else {
@@ -238,16 +239,3 @@ async function sendAndConfirm(
   }
 }
 
-/** Accepts a JSON byte array (solana-keygen) or a base58 secret key. */
-function loadKeypair(secret: string): Keypair {
-  const trimmed = secret.trim();
-  if (trimmed.startsWith("[")) {
-    return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(trimmed)));
-  }
-  // base58 — decoded via bs58 which ships with @solana/web3.js
-  const bs58 = require("bs58");
-  const decoded = bs58.default?.decode
-    ? bs58.default.decode(trimmed)
-    : bs58.decode(trimmed);
-  return Keypair.fromSecretKey(Uint8Array.from(decoded));
-}

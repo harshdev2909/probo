@@ -21,6 +21,7 @@
     "../data/**/*.ts",
     "../db/src/**/*.ts",
     "../db/generated/**/*.ts",
-    "../api/src/**/*.ts"
+    "../api/src/**/*.ts",
+    "../shared/**/*.ts"
   ]
 }
