@@ -138,6 +138,21 @@ clicking through the UI:
 > `/proofbook/...` while the Config File path is relative to the Root Directory.
 > They are two different bases. Yes, that is confusing.
 
+### `railpack.json` — why it exists
+
+`/proofbook` contains `Cargo.toml`, `Anchor.toml` and `rust-toolchain.toml`, because
+it is also an Anchor program. Railway's builder autodetects **Rust**, runs
+`cargo build --release`, and never installs Node — so the deploy dies with
+`npm: command not found`.
+
+`railpack.json` forces the Node provider:
+
+```json
+{ "$schema": "https://schema.railpack.com", "provider": "node" }
+```
+
+Do not delete it, and do not let the Railway agent "fix" the builder for you.
+
 ### Why the watch patterns are not just `keeper/**`
 
 The keeper imports from `db/` (its whole store is Prisma) and `data/` (the 48-team
