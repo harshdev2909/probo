@@ -22,10 +22,41 @@ import { Faucet } from "./faucet";
 const PORT = Number(process.env.PORT ?? process.env.API_PORT ?? 8787);
 const HOST = process.env.HOST ?? "0.0.0.0";
 const DATABASE_URL = process.env.DATABASE_URL!;
-const ORIGINS = (process.env.CORS_ORIGINS ?? "*")
+/**
+ * CORS, done so that it actually works.
+ *
+ * Three things bit us:
+ *   1. A trailing slash. `CORS_ORIGINS=https://x.vercel.app/` never matches,
+ *      because a browser sends `Origin: https://x.vercel.app` with NO slash. The
+ *      config looks right and the request is still blocked.
+ *   2. Vercel mints a NEW url for every deployment
+ *      (`probo-<hash>-<team>.vercel.app`), so pinning one exact origin breaks on
+ *      the next deploy. Wildcards (`https://*.vercel.app`) fix that.
+ *   3. The SSE route echoed ORIGINS[0] instead of the origin that actually asked,
+ *      so with more than one allowed origin the live feed silently failed.
+ */
+const ORIGIN_PATTERNS = (process.env.CORS_ORIGINS ?? "*")
   .split(",")
-  .map((s) => s.trim())
+  .map((s) => normaliseOrigin(s))
   .filter(Boolean);
+
+/** Lowercase, trimmed, no trailing slash — the form a browser actually sends. */
+function normaliseOrigin(o: string): string {
+  return o.trim().toLowerCase().replace(/\/+$/, "");
+}
+
+/** Supports exact origins and `*` wildcards, e.g. `https://*.vercel.app`. */
+function originAllowed(origin: string): boolean {
+  const o = normaliseOrigin(origin);
+  return ORIGIN_PATTERNS.some((p) => {
+    if (p === "*") return true;
+    if (!p.includes("*")) return p === o;
+    const rx = new RegExp(
+      "^" + p.split("*").map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[^.]*") + "$"
+    );
+    return rx.test(o);
+  });
+}
 
 if (!DATABASE_URL) {
   console.error("DATABASE_URL is required");
@@ -56,8 +87,21 @@ const faucet = new Faucet(
 
 async function main() {
   await app.register(cors, {
-    origin: ORIGINS.includes("*") ? true : ORIGINS,
+    origin: (origin, cb) => {
+      // No Origin header at all: curl, server-to-server, health checks. Not a
+      // browser, so there is nothing to protect against here.
+      if (!origin) return cb(null, true);
+      if (originAllowed(origin)) return cb(null, true);
+      // Say WHY, with the exact string, so a trailing slash is obvious in the logs
+      // instead of being an invisible mismatch.
+      app.log.warn(
+        { origin, allowed: ORIGIN_PATTERNS },
+        "CORS: origin rejected — it does not match CORS_ORIGINS"
+      );
+      return cb(null, false);
+    },
     methods: ["GET", "POST", "OPTIONS"],
+    maxAge: 86400,
   });
   await app.register(compress, { global: true, threshold: 1024 });
   await app.register(etag); // conditional GETs — the market board is polled a lot
@@ -206,7 +250,10 @@ async function main() {
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
       "X-Accel-Buffering": "no", // nginx/proxies must not buffer an event stream
-      "Access-Control-Allow-Origin": ORIGINS.includes("*") ? "*" : ORIGINS[0],
+      // Echo the origin that actually asked. Returning ORIGINS[0] meant that with
+      // more than one allowed origin, every other one silently failed.
+      "Access-Control-Allow-Origin": corsHeaderFor(req.headers.origin),
+      Vary: "Origin",
     });
     reply.raw.write(`retry: 3000\n: connected\n\n`);
 
@@ -229,9 +276,26 @@ async function main() {
   await stream.start();
   await app.listen({ port: PORT, host: HOST });
   app.log.info(
-    { port: PORT, faucet: faucet.enabled ? faucet.address : "disabled" },
+    {
+      port: PORT,
+      faucet: faucet.enabled ? faucet.address : "disabled",
+      corsOrigins: ORIGIN_PATTERNS,
+    },
     "ProofBook API up"
   );
+  if (ORIGIN_PATTERNS.includes("*")) {
+    app.log.warn(
+      "CORS_ORIGINS is '*' — ANY site can call this API, including the faucet. " +
+        "Set it to your web URL in production."
+    );
+  }
+}
+
+/** The value to echo back on a manually-written response (SSE). */
+function corsHeaderFor(origin: string | undefined): string {
+  if (ORIGIN_PATTERNS.includes("*")) return "*";
+  if (origin && originAllowed(origin)) return origin;
+  return ORIGIN_PATTERNS[0] ?? "*";
 }
 
 function badRequest(reply: any, err: z.ZodError) {
