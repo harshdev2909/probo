@@ -1024,18 +1024,6 @@ events@^3.3.0:
   resolved "https://registry.npmjs.org/events/-/events-3.3.0.tgz"
   integrity sha512-mQw+2fkQbALzQ7V0MY0IqdnXNOeTtP4r0lN9z7AAawCXgqea7bDii20AYrIBrFd/Hx0M2Ocz6S111CaFkUcb0Q==
 
-eventsource-parser@^3.0.1:
-  version "3.1.0"
-  resolved "https://registry.npmjs.org/eventsource-parser/-/eventsource-parser-3.1.0.tgz"
-  integrity sha512-kJezFj9YFAMLeORyi7aCLxLbD5/qWMQnoMVlVPyHIll7lgRJCc3JVln9Vgl9nwQi0YkMnhdGTMNn7CkRRAptMg==
-
-eventsource@4.1.0:
-  version "4.1.0"
-  resolved "https://registry.npmjs.org/eventsource/-/eventsource-4.1.0.tgz"
-  integrity sha512-2GuF51iuHX6A9xdTccMTsNb7VO0lHZihApxhvQzJB5A03DvHDd2FQepodbMaztPBmBcE/ox7o2gqaxGhYB9LhQ==
-  dependencies:
-    eventsource-parser "^3.0.1"
-
 exsolve@^1.0.7, exsolve@^1.0.8:
   version "1.1.0"
   resolved "https://registry.npmjs.org/exsolve/-/exsolve-1.1.0.tgz"
@@ -1818,18 +1806,6 @@ process@^0.11.10:
   version "0.11.10"
   resolved "https://registry.npmjs.org/process/-/process-0.11.10.tgz"
   integrity sha512-cdGef/drWFoydD1JsMzuFf8100nZl+GT+yacc2bEced5f9Rjk4z+WtFUTBu9PhOi9j/jfmBPu0mMEY4wIdAF8A==
-
-"proofbook-keeper@file:/Volumes/Extreme SSD/probo/proofbook/keeper":
-  version "0.1.0"
-  resolved "file:keeper"
-  dependencies:
-    "@coral-xyz/anchor" "0.32.1"
-    "@solana/spl-token" "0.4.14"
-    "@solana/web3.js" "1.98.4"
-    axios "1.7.9"
-    eventsource "4.1.0"
-    js-sha3 "0.9.3"
-    tweetnacl "1.0.3"
 
 proxy-from-env@^1.1.0:
   version "1.1.0"
