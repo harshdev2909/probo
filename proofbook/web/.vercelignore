@@ -1,0 +1,40 @@
+# Vercel reads .vercelignore from the project's ROOT DIRECTORY, which is `web/` —
+# not from the repo root. A .vercelignore at the repo root is silently ignored,
+# which is how 18,422 files (the root node_modules + .next) ended up in an upload
+# and blew the 15,000-file limit.
+#
+# Paths are relative to the repo root, because "include files outside the Root
+# Directory" is on (web/ imports ../../shared).
+
+# dependency trees — Vercel installs its own
+node_modules
+**/node_modules
+
+# build output
+.next
+**/.next
+target
+**/*.so
+
+# local Solana validator state. `.anchor/test-ledger/admin.rpc` is a UNIX SOCKET,
+# and a socket is not a regular file — the uploader dies on it with
+# `Unknown system error -102`.
+.anchor
+test-ledger
+.surfpool
+
+# server-side services. The web app only reaches ../../shared.
+keeper
+api
+db
+programs
+migrations
+scripts
+tests
+docs
+backups
+
+# secrets
+.env
+.env.*
+!.env.example

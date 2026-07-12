@@ -1,0 +1,32 @@
+# Vercel uploads the WHOLE repo (it has to — web/ imports ../../shared), and it
+# does not honour .gitignore. Without this it tries to read build artefacts and
+# dies: `.anchor/test-ledger/admin.rpc` is a UNIX SOCKET left by the local Solana
+# validator, and a socket is not a regular file — hence `Unknown system error -102`.
+#
+# None of this is needed to build the web app.
+
+# Solana / Anchor build output and local validator state
+target
+.anchor
+test-ledger
+.surfpool
+**/*.so
+
+# server-side services — the web app only needs shared/
+keeper
+api
+db
+programs
+migrations
+scripts
+tests
+docs
+backups
+
+# never upload these
+node_modules
+**/node_modules
+.env
+.env.*
+!.env.example
+keeper/data
