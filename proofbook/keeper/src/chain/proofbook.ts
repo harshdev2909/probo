@@ -72,6 +72,52 @@ function idlPath(name: string): string {
   );
 }
 
+/**
+ * The keeper's signing key.
+ *
+ * WHAT THIS KEY IS FOR — and what it is NOT for.
+ *
+ * It is NOT what lets the keeper settle a match. `settle_market` takes a
+ * permissionless `cranker: Signer` with no special authority: anybody holding a
+ * valid TxLINE proof can settle any market. The PROOF authorises settlement, not
+ * the key. That is the entire point of the product.
+ *
+ * The key exists because:
+ *   1. `initialize_market` DOES require `authority: Signer`, and the market PDA is
+ *      seeded with that authority's pubkey. So the address of every market in the
+ *      seeded tournament is derived from THIS key — a different key produces
+ *      different PDAs, i.e. a different, empty tournament. The 76 settled markets
+ *      live at addresses only this key can create.
+ *   2. Every Solana transaction needs a fee payer, and the fee payer signs. Even a
+ *      permissionless settle costs lamports and must be signed by someone.
+ *   3. It is the escrow mint's authority (used once, to mint the faucet's float).
+ *
+ * Accepts an inline secret (KEEPER_SECRET_KEY: JSON byte array or base58) or a
+ * file path (ANCHOR_WALLET). Inline wins — platforms give you env vars, and
+ * Railway/Fly have no secret-file mount.
+ */
+function loadKeypair(cfg: KeeperConfig): Keypair {
+  if (cfg.walletSecret) {
+    const raw = cfg.walletSecret.trim();
+    if (raw.startsWith("[")) {
+      return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(raw)));
+    }
+    // base58 (what `solana-keygen` prints, and what most platforms paste cleanly)
+    const bs58 = require("bs58");
+    const decode = bs58.default?.decode ?? bs58.decode;
+    return Keypair.fromSecretKey(Uint8Array.from(decode(raw)));
+  }
+  if (!fs.existsSync(cfg.walletPath)) {
+    throw new Error(
+      `No keeper wallet. Set KEEPER_SECRET_KEY (inline) or ANCHOR_WALLET ` +
+        `(a path). Looked for a file at: ${cfg.walletPath}`
+    );
+  }
+  return Keypair.fromSecretKey(
+    Uint8Array.from(JSON.parse(fs.readFileSync(cfg.walletPath, "utf8")))
+  );
+}
+
 export const OUTCOME_LABELS = ["Home", "Draw", "Away"];
 
 export class Chain {
@@ -84,8 +130,7 @@ export class Chain {
   private log = new Logger("chain");
 
   constructor(private cfg: KeeperConfig, private store: StoreLike) {
-    const secret = JSON.parse(fs.readFileSync(cfg.walletPath, "utf8"));
-    this.wallet = Keypair.fromSecretKey(Uint8Array.from(secret));
+    this.wallet = loadKeypair(cfg);
     this.connection = new Connection(cfg.rpcUrl, "confirmed");
     this.provider = new anchor.AnchorProvider(
       this.connection,

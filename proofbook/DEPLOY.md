@@ -70,7 +70,14 @@ Environment:
 
 ```ini
 DATABASE_URL=postgresql://...?sslmode=require
-ANCHOR_WALLET=/etc/secrets/id.json     # or paste the JSON array; see below
+
+# The keeper's signing key, inline. Railway and Fly give you env vars, not secret
+# files, so this is the one to use. A JSON byte array or a base58 secret key:
+#   cat ~/.config/solana/id.json        -> [12,34,...]
+KEEPER_SECRET_KEY=[12,34,...]
+# (Alternatively, on a platform with secret-file mounts — e.g. Render — you can
+#  point at a file instead: ANCHOR_WALLET=/etc/secrets/id.json)
+
 RPC_URL=https://devnet.helius-rpc.com/?api-key=YOUR_KEY
 ANCHOR_PROVIDER_URL=https://devnet.helius-rpc.com/?api-key=YOUR_KEY
 MARKET_TYPE=3
@@ -80,9 +87,30 @@ COMPETITION_ID=72
 KEEPER_INSTANCE=keeper-prod            # optional; shows on the status page
 ```
 
-The wallet is a file. On Railway, add it as a **secret file** mounted at
-`/etc/secrets/id.json` and point `ANCHOR_WALLET` at it. On Fly, use
-`fly secrets set` plus a small entrypoint that writes the file.
+### What this key is for — and what it is *not* for
+
+It is **not** what lets the keeper settle a match. `settle_market` takes a
+permissionless signer with no special authority: **anyone** holding a valid TxLINE
+proof can settle any market. The proof authorises settlement, not the key. That is
+the whole thesis — "nobody clicked resolve" is true even of us.
+
+The keeper needs a key for three much duller reasons:
+
+1. **`initialize_market` does require the authority to sign**, and the market PDA is
+   seeded with that authority's pubkey:
+   `["market", authority, fixture_id, market_type]`. So every market address in the
+   seeded tournament is derived from **this specific key**. Deploy with a different
+   key and you get different PDAs — a different, empty tournament. The 76 settled
+   markets live at addresses only this key could have created.
+2. **Every Solana transaction needs a fee payer, and the fee payer signs.** Even a
+   permissionless settle costs lamports.
+3. It is the **escrow mint's authority** — used once, to mint the faucet's float.
+
+So the key is the tournament's *identity*, not its *permission*. Guard it because
+losing it means you can never create another market in this tournament — not
+because it could ever fake a result.
+
+Keep it funded: it pays the fee for every settlement. A few devnet SOL is plenty.
 
 **Running two keepers is safe** — they elect a leader through a Postgres advisory
 lock and only one ever writes. A rolling deploy that briefly overlaps the old and

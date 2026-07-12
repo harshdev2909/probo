@@ -38,6 +38,13 @@ export interface KeeperConfig {
   mode: "live" | "replay";
   rpcUrl: string;
   walletPath: string;
+  /**
+   * The keeper's signing key as an inline secret (JSON byte array or base58).
+   * Most platforms hand you ENV VARS, not secret files — Railway and Fly have no
+   * secret-file mount at all — so requiring a path made the keeper undeployable
+   * there. This takes precedence over `walletPath` when set.
+   */
+  walletSecret?: string;
   dataDir: string;
   apiPort: number;
 
@@ -98,6 +105,7 @@ export function loadConfig(
     mode,
     rpcUrl:
       e.RPC_URL || e.ANCHOR_PROVIDER_URL || "https://api.devnet.solana.com",
+    walletSecret: e.KEEPER_SECRET_KEY || e.ANCHOR_WALLET_SECRET,
     walletPath:
       e.KEEPER_WALLET ||
       e.ANCHOR_WALLET ||
