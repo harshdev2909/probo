@@ -7,6 +7,7 @@
       "/proofbook/db/**",
       "/proofbook/data/**",
       "/proofbook/idl/**",
+      "/proofbook/shared/**",
       "/proofbook/package.json",
       "/proofbook/package-lock.json"
     ]
