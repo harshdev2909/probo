@@ -1,26 +1,266 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════════════════════════════
+   PROOFBOOK DESIGN TOKENS — see /DESIGN.md
+   Language: squares + quarter-circles. Ink → bone warm neutrals (9 steps).
+   One metallic accent (brass) — EARNED: verified proofs, winnings, the mark.
+   Dark ("stadium at night") is the default and primary theme.
+   ═══════════════════════════════════════════════════════════════════════ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* ── Tier 1 · Ink ramp (hand-tuned, slightly warm; never #000/#FFF) ── */
+  --ink-950: #0f0d0a; /* pitch-black loam — page */
+  --ink-900: #16130f; /* panel */
+  --ink-800: #211d17; /* raised panel / hover surface */
+  --ink-700: #332c23; /* strong border / pressed */
+  --ink-500: #6f6455; /* muted text (large only) */
+  --ink-400: #968878; /* secondary text */
+  --ink-300: #b6a996; /* tertiary headings / labels */
+  --ink-200: #d8cfc0; /* body text */
+  --ink-100: #f2ede3; /* bone — primary text, light surfaces */
+
+  /* ── Tier 1 · Brass (the ONLY metal; verified/winnings/mark) ── */
+  --brass-400: #dcbc7a; /* text & strokes on dark */
+  --brass-500: #c2a05a; /* solid fills */
+  --brass-600: #96762f; /* pressed / borders */
+  --brass-950: #241c0d; /* tinted background */
+
+  /* ── Tier 1 · Semantics (restrained; text-safe on ink-950) ── */
+  --pitch-400: #6cb87e; /* live */
+  --pitch-500: #3f8f53;
+  --pitch-950: #102016;
+  --oxide-400: #d08575; /* loss / error */
+  --oxide-500: #ab5241;
+  --oxide-950: #251310;
+  --amber-400: #d6a44e; /* pending */
+  --amber-950: #251d0e;
+
+  /* ── Tier 1 · Host-nation chips (chips ONLY, never surfaces) ── */
+  --chip-can: #b0413e;
+  --chip-mex: #3e7a54;
+  --chip-usa: #3e5e8c;
+
+  /* ── Hairlines & focus ── */
+  --hairline: rgba(242, 237, 227, 0.09);
+  --hairline-strong: rgba(242, 237, 227, 0.16);
+
+  /* ── Motion: weight & momentum, never bounce ── */
+  --ease-settle: cubic-bezier(0.22, 1, 0.36, 1); /* ball coming to rest */
+  --ease-carry: cubic-bezier(0.65, 0, 0.35, 1); /* layout in flight */
+  --ease-snap: cubic-bezier(0.32, 0.72, 0, 1); /* micro interactions */
+  --t-micro: 120ms;
+  --t-standard: 240ms;
+  --t-entrance: 420ms;
+  --t-hero: 700ms;
+
+  /* ── Quarter-circle radius family ── */
+  --r-chip: 2px;
+  --r-control: 8px;
+  --r-quarter: 24px; /* THE signature corner */
+  --r-quarter-lg: 48px;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* colors → utilities (bg-ink-900, text-brass-400, border-hairline…) */
+  --color-ink-950: var(--ink-950);
+  --color-ink-900: var(--ink-900);
+  --color-ink-800: var(--ink-800);
+  --color-ink-700: var(--ink-700);
+  --color-ink-500: var(--ink-500);
+  --color-ink-400: var(--ink-400);
+  --color-ink-300: var(--ink-300);
+  --color-ink-200: var(--ink-200);
+  --color-ink-100: var(--ink-100);
+  --color-brass-400: var(--brass-400);
+  --color-brass-500: var(--brass-500);
+  --color-brass-600: var(--brass-600);
+  --color-brass-950: var(--brass-950);
+  --color-pitch-400: var(--pitch-400);
+  --color-pitch-500: var(--pitch-500);
+  --color-pitch-950: var(--pitch-950);
+  --color-oxide-400: var(--oxide-400);
+  --color-oxide-500: var(--oxide-500);
+  --color-oxide-950: var(--oxide-950);
+  --color-amber-400: var(--amber-400);
+  --color-amber-950: var(--amber-950);
+  --color-chip-can: var(--chip-can);
+  --color-chip-mex: var(--chip-mex);
+  --color-chip-usa: var(--chip-usa);
+  --color-hairline: var(--hairline);
+  --color-hairline-strong: var(--hairline-strong);
+
+  /* type */
+  --font-display: var(--font-archivo);
+  --font-sans: var(--font-archivo);
+  --font-mono: var(--font-plex-mono);
+
+  /* easing utilities (ease-settle, ease-carry, ease-snap) */
+  --ease-settle: var(--ease-settle);
+  --ease-carry: var(--ease-carry);
+  --ease-snap: var(--ease-snap);
+
+  /* radii (rounded-chip, rounded-control, rounded-quarter…) */
+  --radius-chip: var(--r-chip);
+  --radius-control: var(--r-control);
+  --radius-quarter: var(--r-quarter);
+  --radius-quarter-lg: var(--r-quarter-lg);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ── Base ─────────────────────────────────────────────────────────────── */
+html {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--ink-950);
+  color: var(--ink-200);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--brass-500);
+  color: var(--ink-950);
+}
+
+/* Focus: a visible brass ring, everywhere, always. */
+:focus-visible {
+  outline: 2px solid var(--brass-400);
+  outline-offset: 2px;
+  border-radius: var(--r-chip);
+}
+
+/* Every numeral in the product is tabular by default. */
+.tnum {
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: 0.01em;
+}
+
+/* Display type: the blocky, wide voice (Archivo variable width axis). */
+.display {
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  line-height: 0.94;
+  text-transform: uppercase;
+}
+.display-condensed {
+  font-family: var(--font-display);
+  font-stretch: 78%;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 0.96;
+  text-transform: uppercase;
+}
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-400);
+}
+
+/* Hairline rules — the editorial skeleton. */
+.rule {
+  border-top: 1px solid var(--hairline);
+}
+.rule-strong {
+  border-top: 1px solid var(--hairline-strong);
+}
+
+/* The signature surface: flat panel, one quarter-circle corner. */
+.panel {
+  background: var(--ink-900);
+  border: 1px solid var(--hairline);
+  border-radius: 0 0 0 var(--r-quarter);
+}
+.panel-raised {
+  background: var(--ink-800);
+  border: 1px solid var(--hairline);
+  border-radius: 0 0 0 var(--r-quarter);
+}
+
+/* Live pulse: a breathing dot, not a glow. */
+@keyframes live-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--pitch-400);
+  animation: live-breathe 2.4s var(--ease-carry) infinite;
+}
+
+/* Quarter-circle loader cell (used by <QuarterLoader/>). */
+@keyframes quarter-turn {
+  0% {
+    border-radius: var(--r-quarter) 0 0 0;
+  }
+  25% {
+    border-radius: 0 var(--r-quarter) 0 0;
+  }
+  50% {
+    border-radius: 0 0 var(--r-quarter) 0;
+  }
+  75% {
+    border-radius: 0 0 0 var(--r-quarter);
+  }
+  100% {
+    border-radius: var(--r-quarter) 0 0 0;
+  }
+}
+
+/* Numeral roll (score/odds ticks). */
+@keyframes tick-up {
+  from {
+    transform: translateY(0.55em);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.tick-up {
+  animation: tick-up var(--t-standard) var(--ease-settle);
+}
+
+/* Seal engrave-in (the gold hero moment; used on VERIFY). */
+@keyframes seal-in {
+  from {
+    transform: scale(1.12) rotate(-6deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(0.985) rotate(0.5deg);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+.seal-in {
+  animation: seal-in var(--t-hero) var(--ease-settle) both;
+}
+
+/* Reduced motion: everything lands instantly; nothing breathes. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

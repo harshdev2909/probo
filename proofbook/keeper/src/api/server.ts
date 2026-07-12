@@ -77,6 +77,9 @@ export class ApiServer {
       resolutionTimeout: Number(m.resolutionTimeout),
       winningOutcome: m.winningOutcome === 255 ? null : m.winningOutcome,
       oracleProgram: m.oracleProgram.toBase58(),
+      usdcMint: m.usdcMint.toBase58(),
+      vault: m.vault.toBase58(),
+      authority: m.authority.toBase58(),
       txs: {
         created: rec?.createdTx, locked: rec?.lockTx,
         settled: rec?.settleTx, cancelled: rec?.cancelTx,

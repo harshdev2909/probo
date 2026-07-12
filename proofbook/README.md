@@ -452,3 +452,28 @@ docs/
   ONCHAIN_INTERFACE.md           # account/instruction/event contract + Proof Receipt
 Makefile                         # make build / test / deploy-devnet
 ```
+
+---
+
+## The web app (`web/`)
+
+A handcrafted Next.js frontend on top of the keeper API. Dark-first, built from
+the design system in [`DESIGN.md`](DESIGN.md) (squares + quarter-circles, ink &
+bone, one brass accent — see the living `/styleguide` route). Surfaces: editorial
+landing with a real settled Proof Receipt, the match board (real national flags,
+live SSE scores, crowd-implied odds), market detail + bet slip (wallet-adapter,
+honest tx states), portfolio with claims, the Proof Receipt certificate with an
+independent on-chain VERIFY, the keeper wire, a designed 404, and a football
+cursor (fine pointers only; fully reduced-motion aware).
+
+```bash
+# full demo stack — validator + autonomous keeper (replay) + web:
+./scripts/demo.sh          # then open http://localhost:3000
+
+# web app alone (expects keeper API on :8787):
+cd web && npm run dev
+
+# env (web/.env.local):
+#   NEXT_PUBLIC_KEEPER_API=http://localhost:8787
+#   NEXT_PUBLIC_RPC=http://127.0.0.1:8899   # devnet URL for live mode
+```

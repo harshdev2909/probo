@@ -1,0 +1,1727 @@
+{
+  "address": "4kyf719yvcKf3qHKyLAQHbBEgLogrbJtC2nFZMMd7v63",
+  "metadata": {
+    "name": "proofbook",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "ProofBook — fully on-chain, trustlessly-settled World Cup prediction markets"
+  },
+  "instructions": [
+    {
+      "name": "cancel_market",
+      "docs": [
+        "Liveness escape hatch: Locked -> Cancelled once `now > lock_time +",
+        "resolution_timeout`. Permissionless, time-triggered, sets no winner."
+      ],
+      "discriminator": [
+        205,
+        121,
+        84,
+        210,
+        222,
+        71,
+        150,
+        11
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "canceller",
+          "docs": [
+            "Any signer (has no special power; pays the tx fee)."
+          ],
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim_refund",
+      "docs": [
+        "On a Cancelled market, reclaim the exact original stake (no fee). One-shot."
+      ],
+      "discriminator": [
+        15,
+        16,
+        30,
+        161,
+        255,
+        228,
+        97,
+        60
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "user_token",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim_winnings",
+      "docs": [
+        "Pay a winner their pro-rata share of the (post-fee) pool. One-shot."
+      ],
+      "discriminator": [
+        161,
+        215,
+        24,
+        59,
+        14,
+        236,
+        242,
+        221
+      ],
+      "accounts": [
+        {
+          "name": "winner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "winner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "winner_token",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize_market",
+      "docs": [
+        "Create a market PDA + USDC vault. Validates fee, outcome count, lock time,",
+        "resolution timeout, and per-outcome resolution specs. Binds the market to",
+        "the active oracle and records the fee treasury."
+      ],
+      "discriminator": [
+        35,
+        35,
+        189,
+        193,
+        155,
+        48,
+        170,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "USDC escrow vault owned by the market PDA."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "fixture_id",
+          "type": "i64"
+        },
+        {
+          "name": "market_type",
+          "type": "u8"
+        },
+        {
+          "name": "outcome_options",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "OutcomeSpec"
+              }
+            }
+          }
+        },
+        {
+          "name": "fee_bps",
+          "type": "u16"
+        },
+        {
+          "name": "lock_time",
+          "type": "i64"
+        },
+        {
+          "name": "resolution_timeout",
+          "type": "i64"
+        },
+        {
+          "name": "fee_treasury",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "lock_market",
+      "docs": [
+        "Open -> Locked, permissionlessly, at/after `lock_time`."
+      ],
+      "discriminator": [
+        107,
+        8,
+        184,
+        91,
+        223,
+        13,
+        180,
+        38
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "cranker",
+          "docs": [
+            "Permissionless crank — any signer may lock once `lock_time` has passed."
+          ],
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "place_bet",
+      "docs": [
+        "Stake USDC on an outcome while the market is Open and before `lock_time`."
+      ],
+      "discriminator": [
+        222,
+        62,
+        67,
+        220,
+        63,
+        166,
+        126,
+        33
+      ],
+      "accounts": [
+        {
+          "name": "bettor",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "position",
+          "docs": [
+            "One position per (market, bettor); backs a single outcome."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "bettor"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bettor_token",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "outcome_index",
+          "type": "u8"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "settle_market",
+      "docs": [
+        "Locked -> Settled iff the oracle adapter verifies the claimed outcome."
+      ],
+      "discriminator": [
+        193,
+        153,
+        95,
+        216,
+        166,
+        6,
+        144,
+        217
+      ],
+      "accounts": [
+        {
+          "name": "cranker",
+          "docs": [
+            "Permissionless settler (pays fees; has no special authority)."
+          ],
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "oracle_program",
+          "docs": [
+            "equal the active adapter's program id. It is the `validate_stat` CPI target."
+          ],
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "oracle_roots",
+          "docs": [
+            "derived from `oracle_program` and `proof.ts`. Read-only in the CPI."
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "claimed_outcome",
+          "type": "u8"
+        },
+        {
+          "name": "proof",
+          "type": {
+            "defined": {
+              "name": "SettlementProof"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "withdraw_fees",
+      "docs": [
+        "Push the accrued protocol fee to the treasury. Settled markets only, once."
+      ],
+      "discriminator": [
+        198,
+        212,
+        171,
+        109,
+        144,
+        215,
+        174,
+        89
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "docs": [
+            "Any signer may push fees to the treasury (has no special power)."
+          ],
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "fee_treasury",
+          "docs": [
+            "wallet that must own the destination token account."
+          ],
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "fee_treasury_token",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Market",
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
+    },
+    {
+      "name": "Position",
+      "discriminator": [
+        170,
+        188,
+        143,
+        228,
+        122,
+        64,
+        247,
+        208
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "BetPlaced",
+      "discriminator": [
+        88,
+        88,
+        145,
+        226,
+        126,
+        206,
+        32,
+        0
+      ]
+    },
+    {
+      "name": "FeesWithdrawn",
+      "discriminator": [
+        234,
+        15,
+        0,
+        119,
+        148,
+        241,
+        40,
+        21
+      ]
+    },
+    {
+      "name": "MarketCancelled",
+      "discriminator": [
+        139,
+        163,
+        33,
+        168,
+        19,
+        180,
+        81,
+        170
+      ]
+    },
+    {
+      "name": "MarketInitialized",
+      "discriminator": [
+        134,
+        160,
+        122,
+        87,
+        50,
+        3,
+        255,
+        81
+      ]
+    },
+    {
+      "name": "MarketLocked",
+      "discriminator": [
+        57,
+        30,
+        242,
+        116,
+        238,
+        156,
+        185,
+        189
+      ]
+    },
+    {
+      "name": "MarketSettled",
+      "discriminator": [
+        237,
+        212,
+        22,
+        175,
+        201,
+        117,
+        215,
+        99
+      ]
+    },
+    {
+      "name": "RefundClaimed",
+      "discriminator": [
+        136,
+        64,
+        242,
+        99,
+        4,
+        244,
+        208,
+        130
+      ]
+    },
+    {
+      "name": "WinningsClaimed",
+      "discriminator": [
+        187,
+        184,
+        29,
+        196,
+        54,
+        117,
+        70,
+        150
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "FeeTooHigh",
+      "msg": "Fee exceeds the maximum allowed basis points."
+    },
+    {
+      "code": 6001,
+      "name": "InvalidOutcomeCount",
+      "msg": "Outcome count out of range (must be MIN_OUTCOMES..=MAX_OUTCOMES)."
+    },
+    {
+      "code": 6002,
+      "name": "LockTimeInPast",
+      "msg": "Lock time must be in the future."
+    },
+    {
+      "code": 6003,
+      "name": "InvalidOutcomeSpec",
+      "msg": "Invalid outcome spec: `op` must be Some iff the outcome uses two stats."
+    },
+    {
+      "code": 6004,
+      "name": "InvalidFixtureId",
+      "msg": "fixture_id / match_id must be positive."
+    },
+    {
+      "code": 6005,
+      "name": "ZeroAmount",
+      "msg": "Bet amount must be greater than zero."
+    },
+    {
+      "code": 6006,
+      "name": "InvalidOutcomeIndex",
+      "msg": "Outcome index is out of range for this market."
+    },
+    {
+      "code": 6007,
+      "name": "MarketNotOpen",
+      "msg": "Market is not open for betting."
+    },
+    {
+      "code": 6008,
+      "name": "BettingClosed",
+      "msg": "Betting is closed (past lock time)."
+    },
+    {
+      "code": 6009,
+      "name": "CannotSwitchOutcome",
+      "msg": "A position can only back one outcome; open a new position for another outcome."
+    },
+    {
+      "code": 6010,
+      "name": "WrongMint",
+      "msg": "Provided token account does not match the market's USDC mint."
+    },
+    {
+      "code": 6011,
+      "name": "TooEarlyToLock",
+      "msg": "Too early to lock: current time is before lock_time."
+    },
+    {
+      "code": 6012,
+      "name": "NotLocked",
+      "msg": "Market must be Locked before it can be settled."
+    },
+    {
+      "code": 6013,
+      "name": "AlreadySettled",
+      "msg": "Market is already settled; settlement is idempotent and one-shot."
+    },
+    {
+      "code": 6014,
+      "name": "WrongOracleProgram",
+      "msg": "Provided oracle program does not match the market's trusted oracle."
+    },
+    {
+      "code": 6015,
+      "name": "OracleAdapterMismatch",
+      "msg": "Oracle program does not match the active adapter's program id."
+    },
+    {
+      "code": 6016,
+      "name": "FixtureMismatch",
+      "msg": "Proof fixture_id does not match this market's fixture_id."
+    },
+    {
+      "code": 6017,
+      "name": "ProofShapeMismatch",
+      "msg": "Proof shape does not match the outcome spec (stat_b presence mismatch)."
+    },
+    {
+      "code": 6018,
+      "name": "WrongDailyRootAccount",
+      "msg": "Provided daily-scores account is not the PDA for the proof timestamp."
+    },
+    {
+      "code": 6019,
+      "name": "OracleReturnedNothing",
+      "msg": "Oracle CPI returned no data."
+    },
+    {
+      "code": 6020,
+      "name": "OracleReturnMismatch",
+      "msg": "Oracle return data came from an unexpected program."
+    },
+    {
+      "code": 6021,
+      "name": "OutcomeNotVerified",
+      "msg": "Outcome could not be verified by the oracle; refusing to settle."
+    },
+    {
+      "code": 6022,
+      "name": "NotSettled",
+      "msg": "Market is not settled yet."
+    },
+    {
+      "code": 6023,
+      "name": "AlreadyClaimed",
+      "msg": "Position has already been claimed."
+    },
+    {
+      "code": 6024,
+      "name": "NotAWinningPosition",
+      "msg": "This position did not back the winning outcome; no payout."
+    },
+    {
+      "code": 6025,
+      "name": "ZeroWinningPool",
+      "msg": "Winning pool has zero stake; nothing to claim."
+    },
+    {
+      "code": 6026,
+      "name": "WrongVault",
+      "msg": "Provided vault does not belong to this market."
+    },
+    {
+      "code": 6027,
+      "name": "InvalidResolutionTimeout",
+      "msg": "Resolution timeout must be positive."
+    },
+    {
+      "code": 6028,
+      "name": "AlreadyResolved",
+      "msg": "Market is already resolved (Settled or Cancelled)."
+    },
+    {
+      "code": 6029,
+      "name": "TooEarlyToCancel",
+      "msg": "Too early to cancel: now <= lock_time + resolution_timeout."
+    },
+    {
+      "code": 6030,
+      "name": "NotCancelled",
+      "msg": "Market is not cancelled; refunds are not available."
+    },
+    {
+      "code": 6031,
+      "name": "WrongFeeTreasury",
+      "msg": "Provided fee destination is not owned by the market's fee treasury."
+    },
+    {
+      "code": 6032,
+      "name": "FeesAlreadyWithdrawn",
+      "msg": "Protocol fee has already been withdrawn."
+    },
+    {
+      "code": 6033,
+      "name": "NothingToWithdraw",
+      "msg": "There is no fee to withdraw (zero-fee or cancelled market)."
+    },
+    {
+      "code": 6034,
+      "name": "MathOverflow",
+      "msg": "Arithmetic overflow."
+    },
+    {
+      "code": 6035,
+      "name": "MathUnderflow",
+      "msg": "Arithmetic underflow."
+    }
+  ],
+  "types": [
+    {
+      "name": "BetPlaced",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "bettor",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome_index",
+            "type": "u8"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "position_total",
+            "type": "u64"
+          },
+          {
+            "name": "outcome_pool",
+            "type": "u64"
+          },
+          {
+            "name": "total_pool",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BinaryExpression",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Add"
+          },
+          {
+            "name": "Subtract"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Comparison",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "GreaterThan"
+          },
+          {
+            "name": "LessThan"
+          },
+          {
+            "name": "EqualTo"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FeesWithdrawn",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Market",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Creator (used only in the PDA seeds; has NO power over settlement)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "fixture_id",
+            "docs": [
+              "TxLINE fixtureId == the on-chain match_id."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "market_type",
+            "docs": [
+              "Opaque product-level market type tag (e.g. 0 = 1X2 match result)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "MarketStatus"
+              }
+            }
+          },
+          {
+            "name": "num_outcomes",
+            "type": "u8"
+          },
+          {
+            "name": "winning_outcome",
+            "docs": [
+              "Winning outcome index after settlement; `UNSET_OUTCOME` until then."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "lock_time",
+            "docs": [
+              "Betting closes at/after this Unix-seconds time."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "resolution_timeout",
+            "docs": [
+              "Seconds after `lock_time` before `cancel_market` may be called (liveness",
+              "escape hatch). `cancel` is legal only once `now > lock_time + timeout`."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "oracle_program",
+            "docs": [
+              "Trusted oracle program (TxLINE or mock) — CPI target for settlement."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "usdc_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_treasury",
+            "docs": [
+              "Wallet that owns the fee destination token account (`withdraw_fees` target)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "total_pool",
+            "type": "u64"
+          },
+          {
+            "name": "total_winning_pool",
+            "docs": [
+              "Snapshot of the winning outcome's pool at settlement (payout denominator)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "fee_amount",
+            "docs": [
+              "Fee reserved out of the pool at settlement (0 on Cancelled markets)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "paid_out",
+            "docs": [
+              "Running sum of winner payouts already claimed (solvency + exact-remainder)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "winning_stake_claimed",
+            "docs": [
+              "Running sum of winning stake already claimed (detects the last claimer)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "fee_withdrawn",
+            "docs": [
+              "True once the protocol fee has been withdrawn to the treasury."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "settled_at",
+            "type": "i64"
+          },
+          {
+            "name": "settle_proof_ref",
+            "docs": [
+              "The events-subtree root proven at settlement."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "settle_proof_ts",
+            "docs": [
+              "Batch timestamp (Unix ms) whose daily root was checked."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "settle_epoch_day",
+            "docs": [
+              "`floor(settle_proof_ts / 86_400_000)` — the daily-root epoch day."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "settle_daily_roots",
+            "docs": [
+              "The oracle's `daily_scores_merkle_roots` PDA that was verified against."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "settle_resolver",
+            "docs": [
+              "The account that submitted the winning proof (has no special power)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "vault_bump",
+            "type": "u8"
+          },
+          {
+            "name": "outcomes",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "OutcomeState"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketCancelled",
+      "docs": [
+        "Emitted when a stalled market is cancelled (liveness escape hatch)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "fixture_id",
+            "type": "i64"
+          },
+          {
+            "name": "reason",
+            "docs": [
+              "\"timeout\" (never resolved) | \"zero_winning_pool\" (verified, none staked)."
+            ],
+            "type": "string"
+          },
+          {
+            "name": "cancelled_at",
+            "type": "i64"
+          },
+          {
+            "name": "total_pool",
+            "type": "u64"
+          },
+          {
+            "name": "canceller",
+            "docs": [
+              "The account that triggered the cancel (no special power)."
+            ],
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "fixture_id",
+            "type": "i64"
+          },
+          {
+            "name": "market_type",
+            "type": "u8"
+          },
+          {
+            "name": "num_outcomes",
+            "type": "u8"
+          },
+          {
+            "name": "fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "lock_time",
+            "type": "i64"
+          },
+          {
+            "name": "resolution_timeout",
+            "type": "i64"
+          },
+          {
+            "name": "oracle_program",
+            "type": "pubkey"
+          },
+          {
+            "name": "usdc_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_treasury",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketLocked",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "locked_at",
+            "type": "i64"
+          },
+          {
+            "name": "total_pool",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketSettled",
+      "docs": [
+        "Emitted on trustless settlement — the full Proof Receipt data contract.",
+        "See `docs/ONCHAIN_INTERFACE.md` for how to reconstruct & verify a receipt."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "fixture_id",
+            "type": "i64"
+          },
+          {
+            "name": "winning_outcome",
+            "type": "u8"
+          },
+          {
+            "name": "oracle_program",
+            "type": "pubkey"
+          },
+          {
+            "name": "oracle_label",
+            "docs": [
+              "Which adapter verified the outcome (\"txline\" | \"mock\")."
+            ],
+            "type": "string"
+          },
+          {
+            "name": "proof_ref",
+            "docs": [
+              "The events-subtree root proven at settlement (proof-receipt anchor)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "proof_ts",
+            "docs": [
+              "Batch timestamp (Unix ms) whose daily root was checked."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "epoch_day",
+            "docs": [
+              "`floor(proof_ts / 86_400_000)` — the daily-root epoch day."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "daily_roots",
+            "docs": [
+              "The oracle `daily_scores_merkle_roots` PDA verified against."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "resolver",
+            "docs": [
+              "The account that submitted the winning proof (no special power)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "oracle_verified",
+            "docs": [
+              "The oracle CPI's `validate_stat` return value (always `true` on settle)."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "refundable",
+            "docs": [
+              "True when the winning outcome had zero stake → market is refundable."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "total_pool",
+            "type": "u64"
+          },
+          {
+            "name": "total_winning_pool",
+            "type": "u64"
+          },
+          {
+            "name": "fee_amount",
+            "type": "u64"
+          },
+          {
+            "name": "settled_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketStatus",
+      "docs": [
+        "Lifecycle status of a market.",
+        "",
+        "Legal transitions (enforced per-instruction):",
+        "Open ──lock_market──► Locked ──settle_market(winner pool > 0)──► Settled",
+        "│",
+        "├─settle_market(winner pool == 0)──► Cancelled (refundable)",
+        "└─cancel_market(after timeout)─────► Cancelled (refundable)",
+        "`Settled` and `Cancelled` are terminal: no re-settle, no settle-after-cancel,",
+        "no cancel-after-settle. Winners claim on `Settled`; everyone refunds on `Cancelled`."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Open"
+          },
+          {
+            "name": "Locked"
+          },
+          {
+            "name": "Settled"
+          },
+          {
+            "name": "Cancelled"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OutcomeSpec",
+      "docs": [
+        "How a single outcome is resolved against TxLINE stats. Fixed at market",
+        "creation, so settlement can only ever prove the outcome it was configured",
+        "to prove (see `oracle::build_and_verify`).",
+        "",
+        "Example — 1X2 on full-game goals (stat_a = P1 goals, stat_b = P2 goals):",
+        "Home win: op=Subtract, cmp=GreaterThan, threshold=0   (P1 - P2 > 0)",
+        "Away win: op=Subtract, cmp=LessThan,    threshold=0   (P1 - P2 < 0)",
+        "Draw    : op=Subtract, cmp=EqualTo,     threshold=0   (P1 - P2 == 0)"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "stat_a_key",
+            "type": "u32"
+          },
+          {
+            "name": "stat_a_period",
+            "type": "i32"
+          },
+          {
+            "name": "has_stat_b",
+            "type": "bool"
+          },
+          {
+            "name": "stat_b_key",
+            "type": "u32"
+          },
+          {
+            "name": "stat_b_period",
+            "type": "i32"
+          },
+          {
+            "name": "op",
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "BinaryExpression"
+                }
+              }
+            }
+          },
+          {
+            "name": "comparison",
+            "type": {
+              "defined": {
+                "name": "Comparison"
+              }
+            }
+          },
+          {
+            "name": "threshold",
+            "type": "i32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OutcomeState",
+      "docs": [
+        "An outcome's resolution spec plus its running staked pool."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "spec",
+            "type": {
+              "defined": {
+                "name": "OutcomeSpec"
+              }
+            }
+          },
+          {
+            "name": "pool",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Position",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome_index",
+            "docs": [
+              "The single outcome this position backs."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "amount",
+            "docs": [
+              "Total USDC staked by this owner on `outcome_index`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "claimed",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProofNode",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "is_right_sibling",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RefundClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome_index",
+            "type": "u8"
+          },
+          {
+            "name": "amount",
+            "docs": [
+              "Exact original stake, returned with no fee."
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ScoresBatchSummary",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "fixture_id",
+            "type": "i64"
+          },
+          {
+            "name": "update_stats",
+            "type": {
+              "defined": {
+                "name": "ScoresUpdateStats"
+              }
+            }
+          },
+          {
+            "name": "events_sub_tree_root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ScoresUpdateStats",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "update_count",
+            "type": "i32"
+          },
+          {
+            "name": "min_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "max_timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SettlementProof",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "ts",
+            "docs": [
+              "Batch timestamp (Unix ms) — selects the daily root PDA."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "fixture_summary",
+            "type": {
+              "defined": {
+                "name": "ScoresBatchSummary"
+              }
+            }
+          },
+          {
+            "name": "fixture_proof",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "ProofNode"
+                }
+              }
+            }
+          },
+          {
+            "name": "main_tree_proof",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "ProofNode"
+                }
+              }
+            }
+          },
+          {
+            "name": "event_stat_root",
+            "docs": [
+              "Shared event-stat root for all stats in this batch (v2)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "stat_a_value",
+            "docs": [
+              "Proven value of stat A (its key/period come from the outcome spec)."
+            ],
+            "type": "i32"
+          },
+          {
+            "name": "stat_a_proof",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "ProofNode"
+                }
+              }
+            }
+          },
+          {
+            "name": "has_stat_b",
+            "docs": [
+              "Only meaningful when the outcome spec uses two stats."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "stat_b_value",
+            "type": "i32"
+          },
+          {
+            "name": "stat_b_proof",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "ProofNode"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "WinningsClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "winner",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome_index",
+            "type": "u8"
+          },
+          {
+            "name": "stake",
+            "type": "u64"
+          },
+          {
+            "name": "payout",
+            "type": "u64"
+          },
+          {
+            "name": "is_last_claimer",
+            "docs": [
+              "True when this claim was the final winning stake (absorbs rounding dust)."
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    }
+  ],
+  "constants": [
+    {
+      "name": "MARKET_SEED",
+      "type": "bytes",
+      "value": "[109, 97, 114, 107, 101, 116]"
+    },
+    {
+      "name": "POSITION_SEED",
+      "type": "bytes",
+      "value": "[112, 111, 115, 105, 116, 105, 111, 110]"
+    },
+    {
+      "name": "VAULT_SEED",
+      "type": "bytes",
+      "value": "[118, 97, 117, 108, 116]"
+    }
+  ]
+}
