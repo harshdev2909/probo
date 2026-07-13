@@ -47,7 +47,52 @@ const THROTTLE_MS = Number(process.env.AUDIT_THROTTLE_MS ?? 220);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type Verdict = "VERIFIED_LIVE" | "VERIFIED_TX" | "FAIL";
+/**
+ * FAIL means we CHECKED the receipt and it did not hold up. It is a P0: a receipt
+ * that is not backed by a proof TxLINE's own program will re-adjudicate.
+ *
+ * UNREACHABLE means we could not check it at all, because TxLINE, the RPC or the
+ * database did not answer. That is a fact about the network, not about the receipt,
+ * and conflating the two was a real bug in this script: every exception fell into a
+ * single catch and came out labelled FAIL, so one 429 from TxLINE would have this
+ * audit announce a fabricated receipt. It reports them apart now, and it still
+ * refuses to call anything verified that it did not actually verify.
+ */
+type Verdict = "VERIFIED_LIVE" | "VERIFIED_TX" | "FAIL" | "UNREACHABLE";
+
+/** Does this smell like the network rather than the receipt? */
+function isTransient(e: any): boolean {
+  const m = String(e?.message ?? e).toLowerCase();
+  return (
+    m.includes("fetch failed") ||
+    m.includes("econnreset") ||
+    m.includes("etimedout") ||
+    m.includes("socket") ||
+    m.includes("timeout") ||
+    m.includes("network") ||
+    m.includes("can't reach database") ||
+    m.includes("connection") ||
+    m.includes("429") ||
+    m.includes("502") ||
+    m.includes("503") ||
+    m.includes("504")
+  );
+}
+
+/** Retry only what is worth retrying, and give the network time to settle. */
+async function withRetry<T>(what: () => Promise<T>, attempts = 3): Promise<T> {
+  let last: any;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await what();
+    } catch (e) {
+      last = e;
+      if (!isTransient(e)) throw e; // a real verification failure must not be retried away
+      await sleep(1500 * (i + 1));
+    }
+  }
+  throw last;
+}
 
 interface Row {
   marketPda: string;
@@ -87,10 +132,13 @@ async function main() {
     provider
   ) as any;
 
-  const receipts = await prisma.receipt.findMany({
+  // Neon refuses new connections when its limit is reached, and Prisma reports that
+  // as "can't reach database server" — which is transient, not fatal. Retry it.
+  await withRetry(async () => { await prisma.$connect(); });
+  const receipts = await withRetry(() => prisma.receipt.findMany({
     orderBy: [{ fixtureId: "asc" }],
     include: { market: { select: { marketType: true } } },
-  });
+  }));
   console.log(`\nauditing ${receipts.length} receipt(s)…\n`);
 
   // ── caches: one snapshot + one proof per (fixture, statKeys) ──────────────
@@ -320,11 +368,12 @@ async function main() {
       out.detail =
         "TxLINE retention expired; the settle tx on chain shows the txoracle CPI succeeding";
     } catch (e: any) {
-      out.verdict = "FAIL";
+      // A network failure is not a forged receipt. Say which one it was.
+      out.verdict = isTransient(e) ? "UNREACHABLE" : "FAIL";
       out.detail = String(e?.message ?? e).slice(0, 180);
     }
     process.stdout.write(
-      `\r  ${rows.length}/${receipts.length}  live=${rows.filter((x) => x.verdict === "VERIFIED_LIVE").length} tx=${rows.filter((x) => x.verdict === "VERIFIED_TX").length} fail=${rows.filter((x) => x.verdict === "FAIL").length}   `
+      `\r  ${rows.length}/${receipts.length}  live=${rows.filter((x) => x.verdict === "VERIFIED_LIVE").length} tx=${rows.filter((x) => x.verdict === "VERIFIED_TX").length} fail=${rows.filter((x) => x.verdict === "FAIL").length} unreachable=${rows.filter((x) => x.verdict === "UNREACHABLE").length}   `
     );
   }
   console.log();
@@ -333,10 +382,15 @@ async function main() {
   const allow = new Set(cfg.marketTypes);
   const globalChecks: { name: string; ok: boolean; detail: string }[] = [];
 
-  const badTypes = await prisma.market.findMany({
+  // Neon reaps an idle pooled connection while the receipt loop is out talking to
+  // TxLINE for a quarter of an hour, so these post-loop reads must be able to
+  // reconnect. They used to throw straight through and kill the whole audit at 474
+  // of 713, after all the expensive work was already done.
+  await withRetry(async () => { await prisma.$connect(); });
+  const badTypes = await withRetry(() => prisma.market.findMany({
     where: { marketType: { notIn: [...allow] } },
     select: { pda: true, marketType: true },
-  });
+  }));
   globalChecks.push({
     name: "Allowlist airtight — no dead-generation market in the DB",
     ok: badTypes.length === 0,
@@ -354,9 +408,9 @@ async function main() {
       : "every receipt's on-chain oracle is the real txoracle",
   });
 
-  const leakyScores = await prisma.fixture.count({
+  const leakyScores = await withRetry(() => prisma.fixture.count({
     where: { proofStatus: { not: "proven" }, provenP1: { not: null } },
-  });
+  }));
   globalChecks.push({
     name: "No scoreline without a proof",
     ok: leakyScores === 0,
@@ -408,6 +462,7 @@ async function main() {
   const live = rows.filter((x) => x.verdict === "VERIFIED_LIVE");
   const txv = rows.filter((x) => x.verdict === "VERIFIED_TX");
   const fails = rows.filter((x) => x.verdict === "FAIL");
+  const unreachable = rows.filter((x) => x.verdict === "UNREACHABLE");
   const byType = new Map<number, { live: number; tx: number; fail: number }>();
   for (const x of rows) {
     const b = byType.get(x.marketType) ?? { live: 0, tx: 0, fail: 0 };
@@ -439,7 +494,10 @@ async function main() {
   md.push(
     `| **VERIFIED_TX** | TxLINE's ~23-day retention has expired for the fixture; the settle transaction on chain shows the txoracle CPI invoked and succeeding | **${txv.length}** |`
   );
-  md.push(`| **FAIL** | neither — a P0 bug | **${fails.length}** |`);
+  md.push(`| **FAIL** | we checked it and it did NOT hold up — a P0 bug | **${fails.length}** |`);
+  md.push(
+    `| **UNREACHABLE** | TxLINE, the RPC or the database did not answer, so it could not be checked at all. A fact about the network, not about the receipt. Never counted as verified | **${unreachable.length}** |`
+  );
   md.push(``);
   md.push(`### By market type`);
   md.push(``);
@@ -504,12 +562,23 @@ async function main() {
 
   fs.writeFileSync(path.join(ROOT, "docs", "INTEGRITY_AUDIT.md"), md.join("\n"));
 
-  console.log(`\n  VERIFIED_LIVE ${live.length}  VERIFIED_TX ${txv.length}  FAIL ${fails.length}`);
+  console.log(
+    `\n  VERIFIED_LIVE ${live.length}  VERIFIED_TX ${txv.length}  FAIL ${fails.length}  UNREACHABLE ${unreachable.length}`
+  );
+  if (unreachable.length) {
+    console.log(
+      `\n  ${unreachable.length} receipt(s) could not be reached. That is the network, not the ledger —\n` +
+        `  but this audit will not call them verified, so it exits non-zero. Re-run it.`
+    );
+  }
   for (const c of globalChecks)
     console.log(`  ${c.ok ? "✅" : "❌"} ${c.name} — ${c.detail}`);
   console.log(`\n  wrote docs/INTEGRITY_AUDIT.md\n`);
 
-  if (fails.length || globalChecks.some((c) => !c.ok)) process.exit(1);
+  // Exit non-zero on a real failure, on a failed global check, and ALSO when a
+  // receipt could not be checked. "I could not verify this" must never exit 0.
+  if (fails.length || unreachable.length || globalChecks.some((c) => !c.ok))
+    process.exit(1);
 }
 
 main()

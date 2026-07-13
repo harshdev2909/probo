@@ -7,8 +7,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PROOFBOOK=4kyf719yvcKf3qHKyLAQHbBEgLogrbJtC2nFZMMd7v63
-MOCK=F7QqiHeEEDenTEY8fu55rrYTmFrX4K9KKe3hbcdgrZ7u
+# Read the ids from Anchor.toml rather than hardcoding them. On a fresh clone the
+# suite runs `anchor keys sync` first (the program's address keypair is not in this
+# repo, and should not be), which rewrites these ids to the ones that machine can
+# actually build — so a hardcoded id here would deploy the program at an address its
+# own code does not declare.
+PROOFBOOK=$(sed -n 's/^proofbook = "\(.*\)"/\1/p' Anchor.toml)
+MOCK=$(sed -n 's/^mock_oracle = "\(.*\)"/\1/p' Anchor.toml)
+[ -n "$PROOFBOOK" ] && [ -n "$MOCK" ] || { echo "could not read program ids from Anchor.toml"; exit 1; }
 # One reusable ledger, inside the repo and gitignored, so a clone just works.
 # Override with PB_LEDGER to park it on another disk (a ledger churns writes, and
 # a per-run ledger on the boot drive filled it during development).
