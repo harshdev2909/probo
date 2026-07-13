@@ -45,11 +45,26 @@ restore() {
 }
 trap restore EXIT INT TERM
 
+# Anchor's npm wrapper prints "Could not find globally installed anchor" and then
+# exits 0, so a missing CLI sails straight through `anchor build` and only surfaces
+# later as a validator that "did not become healthy". Check the tool is real first,
+# and check it produced something afterwards. Trust artifacts, not exit codes.
+command -v anchor > /dev/null || { echo "anchor is not installed"; exit 1; }
+anchor --version > /dev/null 2>&1 || {
+  echo "the anchor binary is present but will not run (on CI this is usually a missing"
+  echo "executable bit on the npm-shipped binary). Fix that before running the suite."
+  exit 1
+}
+
 echo "→ syncing program ids to the keypairs on this machine"
 anchor keys sync > /dev/null || { echo "anchor keys sync failed"; exit 1; }
 
 echo "→ building"
 anchor build || exit 1
+
+for so in target/deploy/proofbook.so target/deploy/mock_oracle.so; do
+  [ -f "$so" ] || { echo "anchor build reported success but did not produce $so"; exit 1; }
+done
 
 echo "→ booting a local validator with the programs pinned at their declared ids"
 ./scripts/localnet.sh || exit 1

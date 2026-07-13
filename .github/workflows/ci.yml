@@ -28,8 +28,11 @@ defaults:
 
 env:
   CARGO_TERM_COLOR: always
-  SOLANA_VERSION: v2.1.21
-  ANCHOR_VERSION: 0.31.1
+  # Match the toolchain the program actually compiles against: anchor-lang 1.0.2
+  # (programs/proofbook/Cargo.toml) on Agave. A CLI from a different major line
+  # builds a different IDL and fails in ways that have nothing to do with the code.
+  SOLANA_VERSION: v3.1.14
+  ANCHOR_VERSION: 1.0.2
 
 jobs:
   # The parimutuel maths: solvency, rounding, fee bounds, and the zero winning pool
@@ -82,7 +85,13 @@ jobs:
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
 
       - name: Install Anchor
-        run: npm install -g @coral-xyz/anchor-cli@${ANCHOR_VERSION}
+        run: |
+          npm install -g @coral-xyz/anchor-cli@${ANCHOR_VERSION}
+          # The npm package ships the binary without the executable bit on the
+          # hosted runners, so anchor falls back to "globally installed anchor",
+          # finds none, and silently does nothing while the build "succeeds".
+          chmod +x "$(npm root -g)/@coral-xyz/anchor-cli/anchor" || true
+          anchor --version   # fail here, loudly, rather than three steps later
 
       - name: Create a local keypair
         run: solana-keygen new --no-bip39-passphrase --silent --force

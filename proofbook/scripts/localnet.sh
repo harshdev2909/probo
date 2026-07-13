@@ -21,6 +21,13 @@ MOCK=$(sed -n 's/^mock_oracle = "\(.*\)"/\1/p' Anchor.toml)
 LEDGER="${PB_LEDGER:-$PWD/.test-ledger}"
 RPC=http://127.0.0.1:8899
 
+for so in target/deploy/proofbook.so target/deploy/mock_oracle.so; do
+  [ -f "$so" ] || {
+    echo "missing $so — run \`anchor build\` first (or \`npm run test:anchor\`, which does)."
+    exit 1
+  }
+done
+
 pkill -f solana-test-validator 2>/dev/null || true
 sleep 1
 rm -rf "$LEDGER"
