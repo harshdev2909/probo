@@ -41,7 +41,7 @@ npx @h4rsharma/txline-settle verify <marketPda> --tamper   # REJECTED
 
 The same check runs in the browser at [`/verify`](https://probo-5xn6.vercel.app/verify), and
 across every receipt at once via `npm run audit`, which writes
-[docs/INTEGRITY_AUDIT.md](docs/INTEGRITY_AUDIT.md).
+[docs/INTEGRITY_AUDIT.md](proofbook/docs/INTEGRITY_AUDIT.md).
 
 ## Sixty seconds, as a judge
 
@@ -82,7 +82,7 @@ keeper's own liveness. [`/docs`](https://probo-5xn6.vercel.app/docs) has the SDK
 
 The keeper's signature is not among the things that authorise this. `settle_market_v3` is
 permissionless: anyone holding a valid proof can settle any market, and the keeper gains
-nothing by being the one who does. Full detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+nothing by being the one who does. Full detail in [docs/ARCHITECTURE.md](proofbook/docs/ARCHITECTURE.md).
 
 ## The 26 gaps, and why they stay empty
 
@@ -107,12 +107,12 @@ gaps stay, labelled, in public. That is the feature, not the bug.
 | on chain `txoracle.validate_stat_v3` | the CPI that adjudicates every settlement |
 
 Stat keys 1 to 8 only, because those are the ones TxLINE can actually prove. The confirmed
-constraints are in [docs/TXLINE_INTERFACE.md](docs/TXLINE_INTERFACE.md).
+constraints are in [docs/TXLINE_INTERFACE.md](proofbook/docs/TXLINE_INTERFACE.md).
 
 ## Run it
 
 ```bash
-git clone https://github.com/harshdev2909/probo.git && cd probo
+git clone https://github.com/harshdev2909/probo.git && cd probo/proofbook
 npm install            # also builds the SDK and generates the Prisma client
 cp .env.example .env   # fill in DATABASE_URL, RPC_URL, KEEPER_SECRET_KEY
 npm run db:deploy      # apply the migrations
@@ -145,14 +145,14 @@ a sandbox. A red badge should mean the code is broken, never that devnet was slo
 
 | | |
 | --- | --- |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | program, keeper, API, web, SDK, and the settlement flow |
-| [ENGINEERING_NOTES.md](docs/ENGINEERING_NOTES.md) | the eight things this build learned the expensive way |
-| [TXLINE_INTERFACE.md](docs/TXLINE_INTERFACE.md) | v3, the endpoints, the confirmed constraints |
-| [ONCHAIN_INTERFACE.md](docs/ONCHAIN_INTERFACE.md) | accounts, instructions, and how to rebuild a receipt |
-| [INTEGRITY_AUDIT.md](docs/INTEGRITY_AUDIT.md) | the machine checked audit. Regenerate it with `npm run audit` |
-| [SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) | the threat model, and what an attacker cannot do |
-| [CLI.md](docs/CLI.md) | the settlement CLI, command by command |
-| [DEPLOY.md](docs/DEPLOY.md) | how the deployed pieces are wired together |
+| [ARCHITECTURE.md](proofbook/docs/ARCHITECTURE.md) | program, keeper, API, web, SDK, and the settlement flow |
+| [ENGINEERING_NOTES.md](proofbook/docs/ENGINEERING_NOTES.md) | the eight things this build learned the expensive way |
+| [TXLINE_INTERFACE.md](proofbook/docs/TXLINE_INTERFACE.md) | v3, the endpoints, the confirmed constraints |
+| [ONCHAIN_INTERFACE.md](proofbook/docs/ONCHAIN_INTERFACE.md) | accounts, instructions, and how to rebuild a receipt |
+| [INTEGRITY_AUDIT.md](proofbook/docs/INTEGRITY_AUDIT.md) | the machine checked audit. Regenerate it with `npm run audit` |
+| [SECURITY_AUDIT.md](proofbook/docs/SECURITY_AUDIT.md) | the threat model, and what an attacker cannot do |
+| [CLI.md](proofbook/docs/CLI.md) | the settlement CLI, command by command |
+| [DEPLOY.md](proofbook/docs/DEPLOY.md) | how the deployed pieces are wired together |
 
 ## The SDK
 

@@ -20,6 +20,12 @@ on:
     branches: [main]
   pull_request:
 
+# The project lives in proofbook/, not at the repo root: Vercel is linked at the
+# root and Railway watches /proofbook/**, so the nesting stays and CI steps into it.
+defaults:
+  run:
+    working-directory: proofbook
+
 env:
   CARGO_TERM_COLOR: always
   SOLANA_VERSION: v2.1.21
@@ -48,6 +54,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: proofbook/package-lock.json
       - run: npm ci
       - run: npm run test:sdk
 
@@ -67,6 +74,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: proofbook/package-lock.json
 
       - name: Install the Solana toolchain
         run: |
