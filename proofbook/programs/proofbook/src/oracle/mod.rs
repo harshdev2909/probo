@@ -24,7 +24,7 @@ use anchor_lang::solana_program::{
 
 use crate::constants::*;
 use crate::error::ProofbookError;
-use crate::state::Market;
+use crate::state::{ComboSpec, LegPredicate, Market, StatLeg};
 
 // ── TxLINE validate_stat_v2 wire types — byte-identical to the confirmed IDL ──
 
@@ -93,6 +93,26 @@ pub struct StatValidationInput {
     pub stats: Vec<StatLeaf>,
 }
 
+/// `validate_stat_v3` arg 1. Same authentication path as v2 (fixture proof +
+/// main-tree proof up to the daily root), but the per-stat sibling paths are
+/// replaced by ONE shared Merkle **multiproof** over all the leaves.
+///
+/// The leaves' own `stat_proof` vectors come back EMPTY from the v3 API — the
+/// multiproof supersedes them. Measured on a real 4-leg proof (fixture
+/// 18218149): v2 needed 4 x 5-node paths + 2 = 22 nodes (~726 B); v3 needs one
+/// 9-hash multiproof + 2 = 11 nodes (~363 B). Half the proof, same guarantee.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct StatValidationInputV3 {
+    pub ts: i64,
+    pub fixture_summary: ScoresBatchSummary,
+    pub fixture_proof: Vec<ProofNode>,
+    pub main_tree_proof: Vec<ProofNode>,
+    pub event_stat_root: [u8; 32],
+    pub leaves: Vec<StatLeaf>,
+    pub multiproof_hashes: Vec<ProofNode>,
+    pub leaf_indices: Vec<u32>,
+}
+
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct GeometricTarget {
     pub stat_index: u8,
@@ -147,6 +167,190 @@ pub struct SettlementProof {
     pub has_stat_b: bool,
     pub stat_b_value: i32,
     pub stat_b_proof: Vec<ProofNode>,
+}
+
+// ── SettlementProofV3 — caller-supplied material for `settle_market_v3` ───────
+//
+// Same trustless binding as v2: the caller supplies only PROVEN VALUES and the
+// Merkle material. The predicate — which stats, which comparisons, which
+// thresholds — is fixed by the market's `ComboSpec` and cannot be substituted.
+// The caller cannot even choose WHICH stats are proven: `leaf_values[i]` must be
+// the value of `combo.legs[i]`, whose key/period the program supplies itself.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct SettlementProofV3 {
+    /// Batch timestamp (Unix ms) — selects the daily root PDA.
+    pub ts: i64,
+    pub fixture_summary: ScoresBatchSummary,
+    pub fixture_proof: Vec<ProofNode>,
+    pub main_tree_proof: Vec<ProofNode>,
+    pub event_stat_root: [u8; 32],
+    /// Proven value of each leg, in `ComboSpec.legs` order. Keys/periods are NOT
+    /// taken from here — they come from the spec.
+    pub leaf_values: Vec<i32>,
+    /// The shared multiproof: sibling hashes + the leaves' indices in the tree.
+    pub multiproof_hashes: Vec<ProofNode>,
+    pub leaf_indices: Vec<u32>,
+}
+
+/// CPI into an oracle's `validate_stat_v3` and decode its `bool` return value.
+fn invoke_validate_stat_v3<'info>(
+    oracle_program: &AccountInfo<'info>,
+    daily_scores_roots: &AccountInfo<'info>,
+    payload: StatValidationInputV3,
+    strategy: NDimensionalStrategy,
+) -> Result<bool> {
+    let mut data = Vec::with_capacity(1024);
+    data.extend_from_slice(&VALIDATE_STAT_V3_DISCRIMINATOR);
+    payload
+        .serialize(&mut data)
+        .map_err(|_| error!(ProofbookError::MathOverflow))?;
+    strategy
+        .serialize(&mut data)
+        .map_err(|_| error!(ProofbookError::MathOverflow))?;
+
+    let ix = Instruction {
+        program_id: *oracle_program.key,
+        accounts: vec![AccountMeta::new_readonly(*daily_scores_roots.key, false)],
+        data,
+    };
+
+    invoke(&ix, &[daily_scores_roots.clone(), oracle_program.clone()])?;
+
+    let (ret_program, ret_data) =
+        get_return_data().ok_or(error!(ProofbookError::OracleReturnedNothing))?;
+    require_keys_eq!(
+        ret_program,
+        *oracle_program.key,
+        ProofbookError::OracleReturnMismatch
+    );
+    Ok(ret_data.first().copied().unwrap_or(0) == 1)
+}
+
+/// Translate a market's `ComboSpec` + a v3 proof into a `validate_stat_v3` call.
+///
+/// The `ComboSpec` was validated at creation (every outcome covers every leg
+/// exactly once), so the strategy built here can never trip TxLINE's
+/// DuplicateStatCoverage / IncompleteStatCoverage checks.
+pub fn build_and_verify_v3<'info>(
+    oracle_program: &AccountInfo<'info>,
+    daily_scores_roots: &AccountInfo<'info>,
+    market: &Market,
+    combo: &ComboSpec,
+    claimed_outcome: u8,
+    proof: &SettlementProofV3,
+) -> Result<bool> {
+    let outcome = combo
+        .outcomes
+        .get(claimed_outcome as usize)
+        .ok_or(error!(ProofbookError::InvalidOutcomeIndex))?;
+
+    build_and_verify_v3_legs(
+        oracle_program,
+        daily_scores_roots,
+        market.fixture_id,
+        &combo.legs,
+        &outcome.predicates,
+        proof,
+    )
+}
+
+/// The leg-level CPI. Shared by compound markets and the parametric prop vault —
+/// they differ in where the money goes, not in how a predicate is proven, and a
+/// second copy of this would be a second set of bugs.
+pub fn build_and_verify_v3_legs<'info>(
+    oracle_program: &AccountInfo<'info>,
+    daily_scores_roots: &AccountInfo<'info>,
+    fixture_id: i64,
+    legs: &[StatLeg],
+    predicates: &[LegPredicate],
+    proof: &SettlementProofV3,
+) -> Result<bool> {
+    require!(
+        proof.fixture_summary.fixture_id == fixture_id,
+        ProofbookError::FixtureMismatch
+    );
+    // One proven value per leg, in spec order — no more, no fewer.
+    require!(
+        proof.leaf_values.len() == legs.len(),
+        ProofbookError::LegCountMismatch
+    );
+    require!(
+        proof.leaf_indices.len() == legs.len(),
+        ProofbookError::LegCountMismatch
+    );
+
+    let (expected_pda, _) = daily_scores_pda(oracle_program.key, proof.ts);
+    require_keys_eq!(
+        *daily_scores_roots.key,
+        expected_pda,
+        ProofbookError::WrongDailyRootAccount
+    );
+
+    // The leaves are built from the SPEC's (key, period) and the proof's values.
+    // The caller supplies numbers; it never chooses which stats they are.
+    let leaves: Vec<StatLeaf> = legs
+        .iter()
+        .zip(proof.leaf_values.iter())
+        .map(|(leg, value)| StatLeaf {
+            stat: ScoreStat {
+                key: leg.key,
+                value: *value,
+                period: leg.period,
+            },
+            // v3 authenticates leaves via the shared multiproof, not per-leaf paths.
+            stat_proof: vec![],
+        })
+        .collect();
+
+    let discrete_predicates: Vec<StatPredicate> = predicates
+        .iter()
+        .map(|p| match *p {
+            LegPredicate::Single {
+                index,
+                comparison,
+                threshold,
+            } => StatPredicate::Single {
+                index,
+                predicate: TraderPredicate {
+                    threshold,
+                    comparison,
+                },
+            },
+            LegPredicate::Binary {
+                index_a,
+                index_b,
+                op,
+                comparison,
+                threshold,
+            } => StatPredicate::Binary {
+                index_a,
+                index_b,
+                op,
+                predicate: TraderPredicate {
+                    threshold,
+                    comparison,
+                },
+            },
+        })
+        .collect();
+
+    let payload = StatValidationInputV3 {
+        ts: proof.ts,
+        fixture_summary: proof.fixture_summary.clone(),
+        fixture_proof: proof.fixture_proof.clone(),
+        main_tree_proof: proof.main_tree_proof.clone(),
+        event_stat_root: proof.event_stat_root,
+        leaves,
+        multiproof_hashes: proof.multiproof_hashes.clone(),
+        leaf_indices: proof.leaf_indices.clone(),
+    };
+    let strategy = NDimensionalStrategy {
+        geometric_targets: vec![],
+        distance_predicate: None,
+        discrete_predicates,
+    };
+
+    invoke_validate_stat_v3(oracle_program, daily_scores_roots, payload, strategy)
 }
 
 /// Derive TxLINE's daily-scores-root PDA for a program id and Unix-ms timestamp.

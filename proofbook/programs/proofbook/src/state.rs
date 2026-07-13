@@ -110,9 +110,18 @@ pub struct Market {
 }
 
 impl Market {
-    pub fn space(_num_outcomes: usize) -> usize {
-        // Allocate for MAX_OUTCOMES (deterministic); `InitSpace` sizes the Vec.
-        8 + Market::INIT_SPACE
+    /// Size a market for the outcomes it ACTUALLY has.
+    ///
+    /// `InitSpace` reserves room for `MAX_OUTCOMES`, which a 2-outcome
+    /// over/under market never uses — and with a market per fixture per type,
+    /// that dead space is most of the rent bill. `num_outcomes` is fixed at init
+    /// and the Vec never grows, so sizing to it is safe.
+    ///
+    /// Derived from `INIT_SPACE` rather than hand-counted, so it cannot drift
+    /// when a field is added to `Market` or `OutcomeSpec`.
+    pub fn space(num_outcomes: usize) -> usize {
+        let unused = MAX_OUTCOMES.saturating_sub(num_outcomes);
+        8 + Market::INIT_SPACE - unused * OutcomeState::INIT_SPACE
     }
 
     pub fn outcome_spec(&self, index: u8) -> Result<&OutcomeSpec> {
@@ -133,6 +142,140 @@ impl Market {
     }
 }
 
+// ── Compound (multi-leg) markets ─────────────────────────────────────────────
+//
+// `OutcomeSpec` is hard-capped at two stats and ONE predicate, and it cannot be
+// widened: it lives inside `Vec<OutcomeState>` inside `Market`, so changing its
+// layout would shift every byte offset of the ~226 Market accounts already on
+// devnet — including the settled ones that hold the Proof Receipts. Those are
+// the product's only claim, so `Market` is frozen.
+//
+// Compound markets therefore keep a NORMAL `Market` (same pools, same betting,
+// same claims, same audited parimutuel math) and put the richer resolution spec
+// in this sidecar. Nothing about money changes; only how an outcome is proven.
+
+/// One stat this market proves: a TxLINE `(key, period)` pair.
+/// `key = period*1000 + base`, where base 1/2 = goals, 3/4 = yellows,
+/// 5/6 = reds, 7/8 = corners. `period` is the ScoreStat period (100 = finalised).
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq, InitSpace)]
+pub struct StatLeg {
+    pub key: u32,
+    pub period: i32,
+}
+
+/// A predicate over one leg, or over two legs combined with `op`.
+/// Indices are into `ComboSpec.legs`.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, InitSpace)]
+pub enum LegPredicate {
+    Single {
+        index: u8,
+        comparison: Comparison,
+        threshold: i32,
+    },
+    Binary {
+        index_a: u8,
+        index_b: u8,
+        op: BinaryExpression,
+        comparison: Comparison,
+        threshold: i32,
+    },
+}
+
+impl LegPredicate {
+    /// Mark the leg indices this predicate reads.
+    pub(crate) fn mark(&self, seen: &mut [bool], n_legs: usize) -> Result<()> {
+        let mut touch = |i: u8| -> Result<()> {
+            let i = i as usize;
+            require!(i < n_legs, ProofbookError::InvalidComboSpec);
+            // TxLINE rejects a stat evaluated twice (DuplicateStatCoverage, 6070).
+            require!(!seen[i], ProofbookError::DuplicateLegCoverage);
+            seen[i] = true;
+            Ok(())
+        };
+        match *self {
+            LegPredicate::Single { index, .. } => touch(index),
+            LegPredicate::Binary { index_a, index_b, .. } => {
+                touch(index_a)?;
+                touch(index_b)
+            }
+        }
+    }
+}
+
+/// One outcome of a compound market: an AND of predicates over the market's legs.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, InitSpace)]
+pub struct ComboOutcome {
+    #[max_len(MAX_LEGS)]
+    pub predicates: Vec<LegPredicate>,
+}
+
+/// The compound resolution spec for a market, at PDA `["combo", market]`.
+///
+/// INVARIANT (enforced at init, so it cannot fail at settle time): every outcome
+/// must reference EVERY leg EXACTLY ONCE. TxLINE validates the whole payload in
+/// one shot and errors if any proven stat is evaluated twice
+/// (`DuplicateStatCoverage`, 6070) or left unevaluated (`IncompleteStatCoverage`,
+/// 6071) — both confirmed live against the devnet oracle. Checking it here turns
+/// two settle-time failure modes into one create-time failure.
+///
+/// A direct consequence: a parlay's legs must read DISJOINT stats. "Home win AND
+/// over 2.5 goals" is NOT expressible — both legs read goals P1/P2 — while
+/// "Home win AND over 9.5 corners" is, because goals and corners are disjoint.
+#[account]
+#[derive(InitSpace)]
+pub struct ComboSpec {
+    /// The market this spec resolves. Checked against the passed market at settle.
+    pub market: Pubkey,
+    /// The stats proven for this market. Order defines the `LegPredicate` indices
+    /// AND the order of `statKeys` in the proof request — they must agree.
+    #[max_len(MAX_LEGS)]
+    pub legs: Vec<StatLeg>,
+    /// One entry per market outcome, in the same order as `Market.outcomes`.
+    #[max_len(MAX_OUTCOMES)]
+    pub outcomes: Vec<ComboOutcome>,
+    pub bump: u8,
+}
+
+impl ComboSpec {
+    /// Size the sidecar for the legs and outcomes it actually has. Same reason as
+    /// `Market::space`: a 2-leg / 2-outcome over-under market should not pay rent
+    /// for 5 legs and 12 outcomes.
+    pub fn space(num_legs: usize, num_outcomes: usize) -> usize {
+        let unused_legs = MAX_LEGS.saturating_sub(num_legs);
+        let unused_outcomes = MAX_OUTCOMES.saturating_sub(num_outcomes);
+        8 + ComboSpec::INIT_SPACE
+            - unused_legs * StatLeg::INIT_SPACE
+            - unused_outcomes * ComboOutcome::INIT_SPACE
+    }
+
+    /// Full structural validation. See the INVARIANT on the struct.
+    pub fn validate(&self, num_outcomes: u8) -> Result<()> {
+        require!(
+            !self.legs.is_empty() && self.legs.len() <= MAX_LEGS,
+            ProofbookError::InvalidComboSpec
+        );
+        require!(
+            self.outcomes.len() == num_outcomes as usize,
+            ProofbookError::InvalidComboSpec
+        );
+        for outcome in &self.outcomes {
+            require!(
+                !outcome.predicates.is_empty(),
+                ProofbookError::InvalidComboSpec
+            );
+            let mut seen = [false; MAX_LEGS];
+            for p in &outcome.predicates {
+                p.mark(&mut seen, self.legs.len())?;
+            }
+            // Every leg must be covered — an uncovered leg is 6071 at settle time.
+            for covered in seen.iter().take(self.legs.len()) {
+                require!(*covered, ProofbookError::IncompleteLegCoverage);
+            }
+        }
+        Ok(())
+    }
+}
+
 #[account]
 #[derive(InitSpace)]
 pub struct Position {
@@ -144,4 +287,92 @@ pub struct Position {
     pub amount: u64,
     pub claimed: bool,
     pub bump: u8,
+}
+
+// ── Parametric prop vault ────────────────────────────────────────────────────
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq, InitSpace)]
+pub enum VaultStatus {
+    /// Escrowed, awaiting a proof.
+    Funded,
+    /// The predicate HELD — the beneficiary was paid.
+    PaidOut,
+    /// The predicate FAILED, or the timeout fired — the depositor was refunded.
+    Refunded,
+}
+
+/// A USDC vault that pays out automatically on a verified compound predicate.
+///
+/// "Team A corners + Team B corners > 10" — parametric insurance whose parameter
+/// is a merkle-proven fact rather than an adjuster's opinion. Settled by a SINGLE
+/// `validate_stat_v3` proof, permissionlessly.
+///
+/// The predicate is the same shape as a parlay's: an AND over legs, with the same
+/// coverage invariant (every leg evaluated exactly once). It is fixed at creation
+/// and validated there, so a vault that could never settle cannot be funded.
+#[account]
+#[derive(InitSpace)]
+pub struct PropVault {
+    pub depositor: Pubkey,
+    /// Paid iff the predicate holds. May be the depositor (a self-hedge).
+    pub beneficiary: Pubkey,
+    /// Distinguishes several vaults from the same depositor (PDA seed).
+    pub vault_id: u64,
+    pub fixture_id: i64,
+    pub usdc_mint: Pubkey,
+    pub vault: Pubkey,
+    pub amount: u64,
+    pub status: VaultStatus,
+    /// The stats proven. Order defines the predicate index space.
+    #[max_len(MAX_LEGS)]
+    pub legs: Vec<StatLeg>,
+    /// AND-combined. Must cover every leg exactly once.
+    #[max_len(MAX_LEGS)]
+    pub predicates: Vec<LegPredicate>,
+    /// The result is not knowable before this; settlement is refused earlier.
+    pub lock_time: i64,
+    /// After `lock_time + this`, anyone may refund the depositor.
+    pub resolution_timeout: i64,
+    pub oracle_program: Pubkey,
+    // ── receipt ─────────────────────────────────────────────────────────
+    pub settled_at: i64,
+    pub settle_proof_ref: [u8; 32],
+    pub settle_proof_ts: i64,
+    pub settle_epoch_day: u16,
+    pub settle_daily_roots: Pubkey,
+    pub settle_resolver: Pubkey,
+    pub bump: u8,
+    pub vault_bump: u8,
+}
+
+impl PropVault {
+    pub fn space(num_legs: usize, num_preds: usize) -> usize {
+        let unused_legs = MAX_LEGS.saturating_sub(num_legs);
+        let unused_preds = MAX_LEGS.saturating_sub(num_preds);
+        8 + PropVault::INIT_SPACE
+            - unused_legs * StatLeg::INIT_SPACE
+            - unused_preds * LegPredicate::INIT_SPACE
+    }
+
+    /// The same invariant a ComboSpec outcome lives by: every proven stat must be
+    /// evaluated EXACTLY ONCE, or TxLINE rejects the payload (6070 / 6071).
+    /// Checked at creation, while the vault is empty and can simply be rebuilt.
+    pub fn validate(&self) -> Result<()> {
+        require!(
+            !self.legs.is_empty() && self.legs.len() <= MAX_LEGS,
+            ProofbookError::InvalidComboSpec
+        );
+        require!(
+            !self.predicates.is_empty() && self.predicates.len() <= MAX_LEGS,
+            ProofbookError::InvalidComboSpec
+        );
+        let mut seen = [false; MAX_LEGS];
+        for p in &self.predicates {
+            p.mark(&mut seen, self.legs.len())?;
+        }
+        for covered in seen.iter().take(self.legs.len()) {
+            require!(*covered, ProofbookError::IncompleteLegCoverage);
+        }
+        Ok(())
+    }
 }

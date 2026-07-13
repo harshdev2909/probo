@@ -243,3 +243,144 @@ export async function waitUntilOnchain(
     await sleep(500);
   }
 }
+
+// ── COMBO (multi-leg) markets + v3 multiproof ────────────────────────────────
+
+export const COMBO_SEED = Buffer.from("combo");
+/** Market types >= this resolve through a ComboSpec sidecar (see constants.rs). */
+export const COMBO_MARKET_TYPE_MIN = 16;
+
+export function comboSpecPda(
+  programId: PublicKey,
+  market: PublicKey
+): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [COMBO_SEED, market.toBuffer()],
+    programId
+  )[0];
+}
+
+/** A stat this market proves: TxLINE (key, period). */
+export interface Leg {
+  key: number;
+  period: number;
+}
+
+export const single = (
+  index: number,
+  comparison: any,
+  threshold: number
+) => ({ single: { index, comparison, threshold } });
+
+export const binary = (
+  indexA: number,
+  indexB: number,
+  op: any,
+  comparison: any,
+  threshold: number
+) => ({ binary: { indexA, indexB, op, comparison, threshold } });
+
+export const GT = { greaterThan: {} };
+export const LT = { lessThan: {} };
+export const EQ = { equalTo: {} };
+export const ADD = { add: {} };
+export const SUB = { subtract: {} };
+
+/**
+ * Build a v3 multiproof over N stat leaves, matching `mock_oracle`'s scheme.
+ *
+ * The tree is a perfect binary tree over `2^ceil(log2(N))` leaves (padded with
+ * empty-byte leaves), so the leaf indices are simply 0..N-1. The multiproof is
+ * every sibling hash the verifier cannot derive from the leaves it was given —
+ * collected by walking up level by level, exactly as the on-chain verifier does.
+ *
+ * This is the size win, made concrete: leaves that share an ancestor pay for it
+ * ONCE here, whereas a v2 proof would carry that node in every leaf's path.
+ */
+export function buildProofV3(
+  legs: { key: number; value: number; period: number }[],
+  fixtureId: BN,
+  tsMs: BN
+): { proof: any; dailyRoot: number[]; epochDay: number; nodesUsed: number } {
+  const n = legs.length;
+  if (n < 1) throw new Error("need at least one leg");
+
+  // Pad to a power of two so every leaf has a sibling.
+  let width = 1;
+  while (width < n) width *= 2;
+
+  const leaves: Buffer[] = [];
+  for (let i = 0; i < width; i++) {
+    leaves.push(
+      i < n
+        ? leafHash(encScoreStat(legs[i].key, legs[i].value, legs[i].period))
+        : leafHash(Buffer.alloc(0))
+    );
+  }
+
+  // Full tree, level 0 = leaves.
+  const levels: Buffer[][] = [leaves];
+  while (levels[levels.length - 1].length > 1) {
+    const prev = levels[levels.length - 1];
+    const next: Buffer[] = [];
+    for (let i = 0; i < prev.length; i += 2) {
+      next.push(keccak(Buffer.from("node:"), prev[i], prev[i + 1]));
+    }
+    levels.push(next);
+  }
+  const subRoot = levels[levels.length - 1][0];
+
+  // Collect the siblings the verifier cannot derive: walk up, and at each level
+  // a known node whose sibling is NOT known contributes that sibling.
+  const multiproof: { hash: number[]; isRightSibling: boolean }[] = [];
+  let known = new Set<number>(legs.map((_, i) => i));
+  for (let lvl = 0; lvl < levels.length - 1; lvl++) {
+    const idxs = [...known].sort((a, b) => a - b);
+    const nextKnown = new Set<number>();
+    let i = 0;
+    while (i < idxs.length) {
+      const idx = idxs[i];
+      const sib = idx ^ 1;
+      if (i + 1 < idxs.length && idxs[i + 1] === sib) {
+        i += 2; // both known — costs nothing
+      } else {
+        multiproof.push({
+          hash: Array.from(levels[lvl][sib]),
+          isRightSibling: sib % 2 === 1,
+        });
+        i += 1;
+      }
+      nextKnown.add(idx >> 1);
+    }
+    known = nextKnown;
+  }
+
+  const updateCount = 1;
+  const fixtureSummary = {
+    fixtureId,
+    updateStats: { updateCount, minTimestamp: tsMs, maxTimestamp: tsMs },
+    eventsSubTreeRoot: Array.from(subRoot),
+  };
+  const dailyRoot = leafHash(
+    encFixtureSummary(fixtureId, updateCount, tsMs, tsMs, subRoot)
+  );
+
+  const proof = {
+    ts: tsMs,
+    fixtureSummary,
+    fixtureProof: [],
+    mainTreeProof: [],
+    eventStatRoot: Array.from(subRoot),
+    // Values only — the KEYS and PERIODS come from the on-chain ComboSpec.
+    leafValues: legs.map((l) => l.value),
+    multiproofHashes: multiproof,
+    leafIndices: legs.map((_, i) => i),
+  };
+
+  return {
+    proof,
+    dailyRoot: Array.from(dailyRoot),
+    epochDay: epochDayOf(tsMs),
+    nodesUsed: multiproof.length,
+  };
+}

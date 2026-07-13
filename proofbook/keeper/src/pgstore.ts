@@ -39,10 +39,38 @@ export class PgStore implements StoreLike {
   private timer?: NodeJS.Timeout;
   private flushing = false;
 
-  static async open(): Promise<PgStore> {
+  /**
+   * Boot the store, retrying a cold or briefly-unreachable database.
+   *
+   * Neon suspends an idle compute and takes seconds to wake; its pooler also
+   * refuses connections intermittently. A single failed query at boot was killing
+   * the keeper outright — which, on the night of a semi-final, means no market
+   * locks and no settlement because a database blinked. The feed keeps running
+   * whether we are up or not, so the keeper's job is to survive.
+   */
+  static async open(attempts = 8): Promise<PgStore> {
     const s = new PgStore();
-    await s.load();
-    return s;
+    let delay = 1_000;
+    for (let i = 1; ; i++) {
+      try {
+        await s.load();
+        if (i > 1) log.info("database reachable again", { attempt: i });
+        return s;
+      } catch (e: any) {
+        if (i >= attempts) {
+          log.error("database unreachable after retries — giving up", {
+            attempts,
+            error: String(e?.message).slice(0, 200),
+          });
+          throw e;
+        }
+        log.warn(`database unreachable (attempt ${i}/${attempts}) — retrying in ${delay}ms`, {
+          error: String(e?.message).slice(0, 120),
+        });
+        await new Promise((r) => setTimeout(r, delay));
+        delay = Math.min(delay * 2, 15_000);
+      }
+    }
   }
 
   private async load() {

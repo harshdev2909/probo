@@ -136,6 +136,56 @@
         }
       ],
       "returns": "bool"
+    },
+    {
+      "name": "validate_stat_v3",
+      "docs": [
+        "Mirrors TxLINE `validate_stat_v3`. Same authentication and the same",
+        "`NDimensionalStrategy`, but the per-leaf sibling paths are replaced by ONE",
+        "shared Merkle **multiproof** (`multiproof_hashes` + `leaf_indices`).",
+        "",
+        "The coverage rules are identical to v2's and were confirmed against the",
+        "REAL devnet oracle: a stat evaluated twice errors `DuplicateStatCoverage`",
+        "(6070), and a stat left unevaluated errors `IncompleteStatCoverage` (6071)."
+      ],
+      "discriminator": [
+        150,
+        37,
+        155,
+        89,
+        141,
+        190,
+        77,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "daily_scores_merkle_roots",
+          "docs": [
+            "The published daily scores Merkle roots account (read-only), exactly as",
+            "in the real TxLINE IDL (a single, unconstrained account)."
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "payload",
+          "type": {
+            "defined": {
+              "name": "StatValidationInputV3"
+            }
+          }
+        },
+        {
+          "name": "strategy",
+          "type": {
+            "defined": {
+              "name": "NDimensionalStrategy"
+            }
+          }
+        }
+      ],
+      "returns": "bool"
     }
   ],
   "accounts": [
@@ -536,6 +586,85 @@
                   "name": "StatLeaf"
                 }
               }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "StatValidationInputV3",
+      "docs": [
+        "v3: leaves authenticated together by ONE shared multiproof. The leaves' own",
+        "`stat_proof` vectors are unused (the real v3 API returns them empty)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "ts",
+            "type": "i64"
+          },
+          {
+            "name": "fixture_summary",
+            "type": {
+              "defined": {
+                "name": "ScoresBatchSummary"
+              }
+            }
+          },
+          {
+            "name": "fixture_proof",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "ProofNode"
+                }
+              }
+            }
+          },
+          {
+            "name": "main_tree_proof",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "ProofNode"
+                }
+              }
+            }
+          },
+          {
+            "name": "event_stat_root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "leaves",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "StatLeaf"
+                }
+              }
+            }
+          },
+          {
+            "name": "multiproof_hashes",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "ProofNode"
+                }
+              }
+            }
+          },
+          {
+            "name": "leaf_indices",
+            "type": {
+              "vec": "u32"
             }
           }
         ]

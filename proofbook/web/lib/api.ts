@@ -9,7 +9,7 @@
  * Types come from the API's own contract file, so a field the server stops
  * sending breaks the build here rather than the page.
  */
-import type {
+import type { ReceiptSummary,
   MarketView,
   ReceiptView,
   PositionView,
@@ -24,6 +24,7 @@ import type {
 } from "./contracts";
 
 export type {
+  ReceiptSummary,
   MarketView,
   ReceiptView,
   PositionView,
@@ -85,9 +86,12 @@ export interface MarketFilter {
   stage?: string;
   status?: MarketView["status"];
   proofStatus?: MarketView["proofStatus"];
+  /** One type or comma-separated types, e.g. "36,37,38,39" = the parlays. */
+  marketType?: string;
+  fixtureId?: number;
   limit?: number;
   offset?: number;
-  sort?: "kickoff" | "-kickoff";
+  sort?: "kickoff" | "-kickoff" | "pool" | "-settled";
 }
 
 export const api = {
@@ -95,13 +99,38 @@ export const api = {
 
   markets: (f: MarketFilter = {}) =>
     get<Paginated<MarketView>>(`/markets${qs({ ...f, limit: f.limit ?? 200 })}`),
-  /** The whole board. The tournament is ~104 fixtures, so one page covers it. */
-  allMarkets: async (f: MarketFilter = {}): Promise<MarketView[]> =>
-    (await api.markets(f)).items,
+  /**
+   * The whole board, PAGED.
+   *
+   * This used to take the first page and stop, on the assumption that ~104
+   * fixtures meant ~104 markets. A fixture now carries a dozen markets, so the
+   * board is well over a thousand rows and the API caps a page at 200 — one
+   * request silently returned a sixth of the tournament.
+   */
+  allMarkets: async (f: MarketFilter = {}): Promise<MarketView[]> => {
+    const items: MarketView[] = [];
+    for (let offset = 0; ; offset += 200) {
+      const page = await api.markets({ ...f, limit: 200, offset });
+      items.push(...page.items);
+      if (!page.hasMore || page.items.length === 0) break;
+      if (items.length > 5000) break; // a runaway guard, not a real limit
+    }
+    return items;
+  },
   market: (pda: string) => get<MarketView>(`/markets/${pda}`),
 
-  receipts: (f: { stage?: string; limit?: number; offset?: number } = {}) =>
+  receipts: (
+    f: {
+      stage?: string;
+      marketType?: string;
+      fixtureId?: number;
+      limit?: number;
+      offset?: number;
+    } = {}
+  ) =>
     get<Paginated<ReceiptView>>(`/receipts${qs({ ...f, limit: f.limit ?? 200 })}`),
+  /** The headline stat: receipts by market type. */
+  receiptSummary: () => get<ReceiptSummary>("/receipts/summary"),
   receipt: (pda: string) => get<ReceiptView>(`/receipts/${pda}`),
 
   positions: (wallet: string) => get<PositionView[]>(`/positions/${wallet}`),

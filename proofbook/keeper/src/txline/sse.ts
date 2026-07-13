@@ -56,10 +56,22 @@ export class ScoresStream extends EventEmitter {
         let res = await attempt(
           this.session.headers().Authorization.replace("Bearer ", "")
         );
-        if (res.status === 401 || res.status === 403) {
-          this.log.warn(`SSE rejected (${res.status}); renewing JWT`);
+        // 401 = the JWT expired. 403 = the apiToken was rejected, and renewing
+        // the JWT cannot fix that — the subscription has to be re-activated.
+        // Treating both as "renew the JWT" left a rejected apiToken looping on
+        // backoff forever, with the keeper deaf to the feed it settles from.
+        if (res.status === 401) {
+          this.log.warn("SSE rejected (401); renewing guest JWT");
           const jwt = await this.session.renewJwt();
           res = await attempt(jwt);
+        } else if (res.status === 403) {
+          this.log.warn(
+            "SSE rejected (403); re-subscribing and re-activating the apiToken"
+          );
+          await this.session.subscribeAndActivate();
+          res = await attempt(
+            this.session.headers().Authorization.replace("Bearer ", "")
+          );
         }
         return res;
       },
@@ -68,6 +80,11 @@ export class ScoresStream extends EventEmitter {
     this.es.onopen = () => {
       this.log.info("stream open");
       this.backoffMs = 1000;
+      // Connectivity is a property of the SOCKET, not of the traffic on it.
+      // Between games the feed is legitimately silent for days; deriving
+      // "connected" from the first score event reported a healthy keeper as
+      // disconnected for the entire gap between fixtures.
+      this.emit("open");
     };
 
     this.es.onmessage = (event: MessageEvent) => {
@@ -107,6 +124,7 @@ export class ScoresStream extends EventEmitter {
       this.log.warn("stream error/drop", {
         message: err?.message || String(err?.code || err),
       });
+      this.emit("closed");
       this.es?.close();
       if (this.stopped) return;
       const delay = this.backoffMs;

@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { api, type MarketView } from "@/lib/api";
-import { groupsOf, toFixture, type Group } from "@/lib/tournament";
+import { groupsOf, headlineMarkets, toFixture, type Group } from "@/lib/tournament";
 import { StaggerItem } from "@/components/motion";
 import { QuarterLoader, EmptyState, ErrorState } from "@/components/primitives";
 import { PageArt } from "@/components/PageArt";
@@ -91,7 +91,7 @@ export default function Standings() {
 
   useEffect(() => { void load(); }, []);
 
-  const groups = useMemo(() => groupsOf(markets.map(toFixture)), [markets]);
+  const groups = useMemo(() => groupsOf(headlineMarkets(markets).map(toFixture)), [markets]);
   const proven = groups.reduce((a, g) => a + g.provenCount, 0);
   const total = groups.reduce((a, g) => a + g.totalCount, 0);
 

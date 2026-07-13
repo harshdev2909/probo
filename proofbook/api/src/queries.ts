@@ -10,6 +10,7 @@ import {
   MarketStatus as DbMarketStatus,
   ProofStatus as DbProofStatus,
 } from "../../db/src/client";
+import { marketInfo, outcomeLabels } from "../../shared/markets";
 import type {
   MarketView,
   ReceiptView,
@@ -72,6 +73,7 @@ const sec = (d: Date | null | undefined) =>
 
 function toMarketView(m: any): MarketView {
   const f: FixtureWithTeams = m.fixture;
+  const info = marketInfo(m.marketType);
   const home = teamRef(f.homeTeam, f.homeName);
   const away = teamRef(f.awayTeam, f.awayName);
   const pools: string[] = m.pools.map((p: bigint) => p.toString());
@@ -95,10 +97,15 @@ function toMarketView(m: any): MarketView {
     stage: f.stage,
     kickoffTs: sec(f.kickoffTs)!,
     marketType: m.marketType,
+    marketName: info.name,
+    marketSlug: info.slug,
+    isParlay: !!info.parlay,
     status: m.status,
     proofStatus: f.proofStatus,
     gapReason: f.gapReason,
-    outcomes: OUTCOME_LABELS,
+    // Labels come from the market-type registry, NOT a hardcoded 1X2 list. A
+    // two-way Over/Under was rendering a phantom "Draw" and a missing third pool.
+    outcomes: outcomeLabels(m.marketType, m.pools.length),
     pools,
     totalPool: m.totalPool.toString(),
     crowdImplied: m.pools.map((p: bigint) =>
@@ -122,16 +129,30 @@ function toMarketView(m: any): MarketView {
   };
 }
 
+/** Parse "36,37,38" into [36,37,38]; undefined stays undefined. */
+const parseTypes = (t?: string): number[] | undefined =>
+  t
+    ? t
+        .split(",")
+        .map((x) => Number(x.trim()))
+        .filter((n) => Number.isFinite(n))
+    : undefined;
+
 export async function listMarkets(q: {
   stage?: string;
   status?: string;
   proofStatus?: string;
+  marketType?: string;
+  fixtureId?: number;
   limit: number;
   offset: number;
-  sort: "kickoff" | "-kickoff";
+  sort: "kickoff" | "-kickoff" | "pool" | "-settled";
 }): Promise<Paginated<MarketView>> {
   const where: any = {};
   if (q.status) where.status = q.status as DbMarketStatus;
+  if (q.fixtureId) where.fixtureId = q.fixtureId;
+  const types = parseTypes(q.marketType);
+  if (types?.length) where.marketType = { in: types };
   if (q.stage) where.fixture = { ...(where.fixture ?? {}), stage: q.stage };
   if (q.proofStatus)
     where.fixture = {
@@ -139,14 +160,19 @@ export async function listMarkets(q: {
       proofStatus: q.proofStatus as DbProofStatus,
     };
 
+  const orderBy: any =
+    q.sort === "pool"
+      ? { totalPool: "desc" }
+      : q.sort === "-settled"
+        ? { settledAt: "desc" }
+        : { fixture: { kickoffTs: q.sort === "-kickoff" ? "desc" : "asc" } };
+
   const [total, rows] = await Promise.all([
     prisma.market.count({ where }),
     prisma.market.findMany({
       where,
       include: { fixture: { include: fixtureInclude } },
-      orderBy: {
-        fixture: { kickoffTs: q.sort === "-kickoff" ? "desc" : "asc" },
-      },
+      orderBy,
       take: q.limit,
       skip: q.offset,
     }),
@@ -182,6 +208,10 @@ function toReceiptView(r: any): ReceiptView {
     home,
     away,
     stage: f.stage,
+    marketType: r.market.marketType,
+    marketName: marketInfo(r.market.marketType).name,
+    isParlay: !!marketInfo(r.market.marketType).parlay,
+    statKeys: marketInfo(r.market.marketType).statKeys ?? [],
     winningOutcome: r.winningOutcome,
     outcomeLabel: r.outcomeLabel,
     provenScore:
@@ -208,11 +238,17 @@ const receiptInclude = {
 
 export async function listReceipts(q: {
   stage?: string;
+  marketType?: string;
+  fixtureId?: number;
   limit: number;
   offset: number;
 }): Promise<Paginated<ReceiptView>> {
   const where: any = {};
   if (q.stage) where.market = { fixture: { stage: q.stage } };
+  if (q.fixtureId) where.fixtureId = q.fixtureId;
+  const types = parseTypes(q.marketType);
+  if (types?.length)
+    where.market = { ...(where.market ?? {}), marketType: { in: types } };
 
   const [total, rows] = await Promise.all([
     prisma.receipt.count({ where }),
@@ -305,7 +341,10 @@ export async function listPositions(owner: string): Promise<PositionView[]> {
       fixtureId: f.id,
       fixtureName: `${home.name} v ${away.name}`,
       outcomeIndex: p.outcomeIndex,
-      outcomeLabel: OUTCOME_LABELS[p.outcomeIndex] ?? String(p.outcomeIndex),
+      // The label depends on the MARKET TYPE. "Draw" on an Over/Under position
+      // is not a cosmetic slip — it tells a user they backed something they did not.
+      outcomeLabel: outcomeLabels(m.marketType, m.pools.length)[p.outcomeIndex] ??
+        `Outcome ${p.outcomeIndex + 1}`,
       amount: p.amount.toString(),
       claimed: p.claimed,
       marketStatus: m.status,
@@ -456,16 +495,26 @@ export async function getBracket(): Promise<BracketRound[]> {
     where: { stage: { in: KO_ORDER } },
     include: {
       ...fixtureInclude,
-      markets: { select: { pda: true, status: true, winningOutcome: true } },
+      markets: {
+        select: { pda: true, status: true, winningOutcome: true, marketType: true },
+      },
     },
     orderBy: { kickoffTs: "asc" },
   });
+
+  // The RESULT lives in the 1X2 market. `markets[0]` was an arbitrary pick —
+  // fine when a fixture had one market, wrong now that it has a dozen: a corners
+  // Over/Under's winningOutcome=0 means "Over", and reading it as "home won"
+  // would put the wrong team through the bracket.
+  const RESULT_TYPES = new Set([3, 4, 28]);
 
   const byStage = new Map<string, BracketTie[]>();
   for (const f of fixtures) {
     const home = teamRef(f.homeTeam, f.homeName);
     const away = teamRef(f.awayTeam, f.awayName);
-    const market = f.markets[0];
+    const oneXtwo = f.markets.filter((m) => RESULT_TYPES.has(m.marketType));
+    const market =
+      oneXtwo.find((m) => m.status === DbMarketStatus.settled) ?? oneXtwo[0];
     const proven =
       f.proofStatus === DbProofStatus.proven &&
       f.provenP1 !== null &&
@@ -575,5 +624,218 @@ export async function getFixtureLive(id: number) {
     lastSeq: f.lastSeq,
     proofStatus: f.proofStatus,
     gapReason: f.gapReason,
+  };
+}
+
+/**
+ * The settlement archive: the full, ordered event timeline for one fixture —
+ * every score update, every market transition, and the receipt itself.
+ *
+ * This exists because a live settlement happens exactly once, at whatever hour
+ * the match happens to finish. `feed_events` already captures it; without a read
+ * path the moment is recorded and then unreachable. Replaying this timeline
+ * reproduces the settlement after the fact, from the same rows the live SSE
+ * stream served — no re-enactment, no reconstruction.
+ */
+export async function getArchive(fixtureId: number): Promise<ArchiveView | null> {
+  const fixture = await prisma.fixture.findUnique({
+    where: { id: fixtureId },
+    include: fixtureInclude,
+  });
+  if (!fixture) return null;
+
+  const events = await prisma.feedEvent.findMany({
+    where: { fixtureId },
+    orderBy: { id: "asc" },
+    select: {
+      id: true,
+      type: true,
+      seq: true,
+      marketPda: true,
+      payload: true,
+      createdAt: true,
+    },
+  });
+
+  const settledAt = events.find((e) => e.type === "receipt")?.createdAt ?? null;
+  return {
+    fixtureId,
+    name: `${fixture.homeTeam?.name ?? fixture.homeName} v ${
+      fixture.awayTeam?.name ?? fixture.awayName
+    }`,
+    kickoffTs: sec(fixture.kickoffTs),
+    settledAt: settledAt ? sec(settledAt) : null,
+    events: events.map((e) => ({
+      id: e.id.toString(),
+      type: e.type,
+      seq: e.seq,
+      marketPda: e.marketPda,
+      at: sec(e.createdAt),
+      payload: e.payload as unknown,
+    })),
+  };
+}
+
+export interface ArchiveEvent {
+  id: string;
+  type: string;
+  seq: number | null;
+  marketPda: string | null;
+  at: number;
+  payload: unknown;
+}
+
+export interface ArchiveView {
+  fixtureId: number;
+  name: string;
+  kickoffTs: number;
+  /** When the settlement event landed — null if this fixture never settled. */
+  settledAt: number | null;
+  events: ArchiveEvent[];
+}
+
+/**
+ * The TxLINE read credential the browser-side verifier needs.
+ *
+ * The keeper obtains these by subscribing on-chain (free World-Cup tier) and
+ * mirrors them into `kv`. A browser cannot mint them for itself — `/auth/guest/start`
+ * yields a JWT, but the proof endpoint answers "Missing API token" without the
+ * subscription token too.
+ *
+ * Handing this out does not make the verifier trust us: the proof it fetches is
+ * checked against a Merkle root read straight from Solana, by TxLINE's own
+ * on-chain program. A forged proof cannot pass.
+ */
+export async function getTxlineCredential(): Promise<{
+  origin: string;
+  jwt: string;
+  apiToken: string;
+} | null> {
+  const rows = await prisma.keyValue.findMany({
+    where: { key: { in: ["txlineJwt", "txlineApiToken"] } },
+  });
+  const jwt = rows.find((r) => r.key === "txlineJwt")?.value;
+  const apiToken = rows.find((r) => r.key === "txlineApiToken")?.value;
+  if (!jwt || !apiToken) return null;
+  return {
+    origin: process.env.TXLINE_API ?? "https://txline-dev.txodds.com",
+    jwt,
+    apiToken,
+  };
+}
+
+// ── the headline stat: receipts BY MARKET TYPE ───────────────────────────────
+
+import type { ReceiptSummary } from "../../shared/contracts";
+export type { ReceiptSummary };
+
+export async function getReceiptSummary(): Promise<ReceiptSummary> {
+  const [total, fixturesCovered, gaps] = await Promise.all([
+    prisma.receipt.count(),
+    prisma.receipt
+      .findMany({ distinct: ["fixtureId"], select: { fixtureId: true } })
+      .then((r) => r.length),
+    prisma.fixture.count({ where: { proofStatus: DbProofStatus.no_proof } }),
+  ]);
+
+  // Prisma's groupBy cannot group by a related column, so the by-type rollup is
+  // one raw GROUP BY over the join — a single indexed round trip at any size.
+  const rows = await prisma.$queryRaw<
+    { marketType: number; count: bigint }[]
+  >`select m."marketType" as "marketType", count(*)::bigint as count
+    from receipts r join markets m on m.pda = r."marketPda"
+    group by 1 order by 1`;
+
+  return {
+    total,
+    byType: rows.map((r) => {
+      const info = marketInfo(r.marketType);
+      return {
+        marketType: r.marketType,
+        name: info.name,
+        slug: info.slug,
+        parlay: !!info.parlay,
+        count: Number(r.count),
+      };
+    }),
+    fixturesCovered,
+    gaps,
+  };
+}
+
+// ── SHARP vs CROWD ──────────────────────────────────────────────────────────
+
+export interface OddsPoint {
+  at: number;
+  /** ProofBook pool-implied probability per outcome. */
+  crowd: number[];
+  /** TxLINE demargined consensus probability per outcome. Empty when TxLINE published none. */
+  sharp: number[];
+  totalPool: string;
+}
+
+export interface OddsSeries {
+  marketPda: string;
+  outcomes: string[];
+  points: OddsPoint[];
+  /** Latest crowd/sharp/divergence, or null where TxLINE has no line. */
+  latest: {
+    crowd: number[];
+    sharp: number[] | null;
+    /** crowd - sharp, in percentage points. Positive = crowd rates it higher. */
+    divergence: number[] | null;
+    bookmaker: string | null;
+  };
+  /**
+   * Why there may be no sharp line. TxLINE publishes odds only around kickoff
+   * and purges them afterwards, so the backfilled wall has none — and we say so
+   * rather than drawing a flat line at some invented number.
+   */
+  note: string | null;
+}
+
+export async function getOddsSeries(pda: string): Promise<OddsSeries | null> {
+  const market = await prisma.market.findUnique({
+    where: { pda },
+    select: { pda: true, pools: true, marketType: true },
+  });
+  if (!market) return null;
+
+  const rows = await prisma.oddsSnapshot.findMany({
+    where: { marketPda: pda },
+    orderBy: { takenAt: "asc" },
+    take: 500,
+  });
+
+  const implied = (pools: bigint[]) => {
+    const p = pools.map(Number);
+    const t = p.reduce((a, b) => a + b, 0);
+    return t > 0 ? p.map((x) => x / t) : p.map(() => 0);
+  };
+
+  const points: OddsPoint[] = rows.map((r) => ({
+    at: sec(r.takenAt),
+    crowd: implied(r.pools),
+    sharp: r.consensusPct ?? [],
+    totalPool: r.totalPool.toString(),
+  }));
+
+  const withSharp = [...rows].reverse().find((r) => r.consensusPct?.length);
+  const crowd = implied(market.pools);
+  const sharp = withSharp?.consensusPct ?? null;
+
+  return {
+    marketPda: pda,
+    outcomes: OUTCOME_LABELS,
+    points,
+    latest: {
+      crowd,
+      sharp,
+      divergence: sharp ? crowd.map((c, i) => c - sharp[i]) : null,
+      bookmaker: withSharp?.bookmaker ?? null,
+    },
+    note: sharp
+      ? null
+      : "TxLINE publishes consensus odds only around kickoff and purges them afterwards, so there is no sharp line for this market. We show the crowd only, rather than invent one.",
   };
 }

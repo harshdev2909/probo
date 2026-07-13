@@ -71,6 +71,9 @@ export const MarketViewSchema = z.object({
   stage: z.string(),
   kickoffTs: z.number(),
   marketType: z.number(),
+  marketName: z.string(),
+  marketSlug: z.string(),
+  isParlay: z.boolean(),
   status: MarketStatusSchema,
   proofStatus: ProofStatusSchema,
   gapReason: z.string().nullable(),
@@ -106,6 +109,10 @@ export const ReceiptViewSchema = z.object({
   home: TeamRefSchema,
   away: TeamRefSchema,
   stage: z.string(),
+  marketType: z.number(),
+  marketName: z.string(),
+  isParlay: z.boolean(),
+  statKeys: z.array(z.number()),
   winningOutcome: z.number(),
   outcomeLabel: z.string(),
   provenScore: ScoreSchema.nullable(),
@@ -217,14 +224,25 @@ export const MarketQuery = z.object({
   stage: z.string().optional(),
   status: MarketStatusSchema.optional(),
   proofStatus: ProofStatusSchema.optional(),
+  /** One market type, or comma-separated types (e.g. `36,37,38,39` = parlays). */
+  marketType: z
+    .string()
+    .regex(/^\d+(,\d+)*$/)
+    .optional(),
+  fixtureId: z.coerce.number().int().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(120),
   offset: z.coerce.number().int().min(0).default(0),
-  /** `kickoff` (default) or `-kickoff` for newest first. */
-  sort: z.enum(["kickoff", "-kickoff"]).default("kickoff"),
+  /** `kickoff` (default), `-kickoff`, `pool` (deepest first) or `-settled`. */
+  sort: z.enum(["kickoff", "-kickoff", "pool", "-settled"]).default("kickoff"),
 });
 
 export const ReceiptQuery = z.object({
   stage: z.string().optional(),
+  marketType: z
+    .string()
+    .regex(/^\d+(,\d+)*$/)
+    .optional(),
+  fixtureId: z.coerce.number().int().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(60),
   offset: z.coerce.number().int().min(0).default(0),
 });

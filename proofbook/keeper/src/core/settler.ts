@@ -10,6 +10,13 @@ import { TxLineClient } from "../txline/client";
 import { dailyRootsPda, epochDayOf } from "../chain/pdas";
 import { ReplayFixture } from "../txline/replay";
 
+/** The stat values a real merkle proof attests, plus the period it commits to. */
+interface ProvenStat {
+  p1: number;
+  p2: number;
+  period?: number;
+}
+
 /**
  * The flagship: fully autonomous settlement. On a game_finalised record it
  * fetches the REAL proof and submits settle_market (CPI into validate_stat_v2).
@@ -68,20 +75,54 @@ export class Settler extends EventEmitter {
           `market already ${st} on-chain — recording and stopping`,
           { market: marketPdaStr }
         );
-        await this.recordResolution(marketPdaStr, onchain, rec.settleTx || "");
+        // Best-effort: re-fetch the proof so a restart still backfills the
+        // proven scoreline onto a receipt that was written without one. A
+        // cancelled market may have no proof at all — that is not an error.
+        let proven: ProvenStat | undefined;
+        try {
+          const b = await this.buildProof(fixtureId, seq);
+          proven = { p1: b.p1, p2: b.p2, period: b.period };
+        } catch {
+          /* no proof retrievable — record the resolution without a scoreline */
+        }
+        await this.recordResolution(
+          marketPdaStr,
+          onchain,
+          rec.settleTx || "",
+          proven
+        );
         this.inFlight.delete(marketPdaStr);
         return;
       }
       if (st === "open") throw retryable("market not locked yet");
 
       // Build the proof: real REST proof (live) or mock-built from the recording.
-      const { proof, epochDay, p1, p2 } = await this.buildProof(fixtureId, seq);
+      const { proof, epochDay, p1, p2, period } = await this.buildProof(
+        fixtureId,
+        seq
+      );
       const claimed = p1 > p2 ? 0 : p1 < p2 ? 2 : 1;
+
+      // The market's OutcomeSpec pins the stat period at creation and is
+      // immutable. If the proof carries a different period the CPI can only
+      // fail (OutcomeNotVerified) — which is safe, but arrives as a mystery.
+      // Say so loudly instead: this is the one failure that would silently ride
+      // the retry budget down to the cancel backstop and void a live market.
+      const specPeriod = onchain.outcomes?.[claimed]?.spec?.statAPeriod;
+      if (specPeriod !== undefined && period !== undefined && specPeriod !== period) {
+        this.log.error(
+          "PERIOD MISMATCH — the proof's period does not match the market's OutcomeSpec. " +
+            "This market cannot settle (the spec is immutable) and will ride the cancel backstop.",
+          { market: marketPdaStr, specPeriod, proofPeriod: period, fixtureId }
+        );
+      }
+
       this.log.info("submitting settle_market", {
         market: marketPdaStr,
         attempt: n,
         epochDay,
         final: `${p1}-${p2}`,
+        period,
         claimedOutcome: OUTCOME_LABELS[claimed],
         oracle: this.chain.oracleProgramId.toBase58(),
       });
@@ -100,7 +141,11 @@ export class Settler extends EventEmitter {
         }
       );
       const settled = await this.chain.fetchMarket(market);
-      await this.recordResolution(marketPdaStr, settled, sig);
+      await this.recordResolution(marketPdaStr, settled, sig, {
+        p1,
+        p2,
+        period,
+      });
       this.inFlight.delete(marketPdaStr);
     } catch (e: any) {
       // A cancel (backstop) may have raced us — that's a resolution, not an error.
@@ -174,7 +219,8 @@ export class Settler extends EventEmitter {
         p1,
         p2
       );
-      return { proof, epochDay, p1, p2 };
+      const period = stats?.[0]?.period ?? this.cfg.statPeriod;
+      return { proof, epochDay, p1, p2, period };
     }
 
     // Live: fetch the real proof from TxLINE.
@@ -186,6 +232,9 @@ export class Settler extends EventEmitter {
     );
     const p1 = val.statsToProve[0].value;
     const p2 = val.statsToProve[1].value;
+    // The period the PROOF carries (100 = game_finalised). Authoritative — it
+    // is what the merkle leaf commits to, and what must match the OutcomeSpec.
+    const period = val.statsToProve[0].period;
     const tsMs = val.summary.updateStats.minTimestamp;
     const epochDay = epochDayOf(tsMs);
     const proof = {
@@ -208,14 +257,15 @@ export class Settler extends EventEmitter {
       statBValue: p2,
       statBProof: mapProof(val.statProofs[1]),
     };
-    return { proof, epochDay, p1, p2 };
+    return { proof, epochDay, p1, p2, period };
   }
 
   /** Persist the Proof Receipt — the structured record the frontend renders. */
   private async recordResolution(
     marketPdaStr: string,
     onchain: any,
-    settleTx: string
+    settleTx: string,
+    proven?: ProvenStat
   ) {
     const rec = this.store.data.markets[marketPdaStr];
     const st = statusName(onchain.status);
@@ -228,6 +278,14 @@ export class Settler extends EventEmitter {
         marketPda: marketPdaStr,
         matchId: Number(onchain.fixtureId),
         winningOutcome: onchain.winningOutcome,
+        // The values the MERKLE PROOF attests — never the feed's sampled Score.
+        // Without these a live receipt renders with a blank scoreline, which is
+        // why every receipt on the wall used to come from the backfiller.
+        provenScore:
+          proven && proven.p1 !== undefined && proven.p2 !== undefined
+            ? { p1: proven.p1, p2: proven.p2 }
+            : undefined,
+        statPeriod: proven?.period,
         outcomeLabel:
           OUTCOME_LABELS[onchain.winningOutcome] ??
           String(onchain.winningOutcome),

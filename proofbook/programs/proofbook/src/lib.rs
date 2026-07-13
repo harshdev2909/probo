@@ -26,10 +26,13 @@ pub use error::ProofbookError;
 pub use instructions::*;
 pub use oracle::{
     BinaryExpression, Comparison, GeometricTarget, NDimensionalStrategy, OracleAdapter, ProofNode,
-    ScoreStat, ScoresBatchSummary, ScoresUpdateStats, SettlementProof, StatLeaf, StatPredicate,
-    StatValidationInput, TraderPredicate,
+    ScoreStat, ScoresBatchSummary, ScoresUpdateStats, SettlementProof, SettlementProofV3, StatLeaf,
+    StatPredicate, StatValidationInput, StatValidationInputV3, TraderPredicate,
 };
-pub use state::{Market, MarketStatus, OutcomeSpec, OutcomeState, Position};
+pub use state::{
+    ComboOutcome, ComboSpec, LegPredicate, Market, MarketStatus, OutcomeSpec, OutcomeState,
+    Position, PropVault, StatLeg, VaultStatus,
+};
 
 declare_id!("4kyf719yvcKf3qHKyLAQHbBEgLogrbJtC2nFZMMd7v63");
 
@@ -79,6 +82,74 @@ pub mod proofbook {
         proof: SettlementProof,
     ) -> Result<()> {
         instructions::settle_market::handler(ctx, claimed_outcome, proof)
+    }
+
+    /// Attach a compound (multi-leg) resolution spec to a market, so it can be
+    /// settled by proving several stats in ONE `validate_stat_v3` CPI.
+    /// Open markets only; the spec is structurally validated on the way in.
+    pub fn initialize_combo_spec(
+        ctx: Context<InitializeComboSpec>,
+        legs: Vec<StatLeg>,
+        outcomes: Vec<ComboOutcome>,
+    ) -> Result<()> {
+        instructions::initialize_combo_spec::handler(ctx, legs, outcomes)
+    }
+
+    /// Locked -> Settled for a COMPOUND market: every leg proven together against
+    /// one shared Merkle multiproof, in a single `validate_stat_v3` CPI.
+    pub fn settle_market_v3(
+        ctx: Context<SettleMarketV3>,
+        claimed_outcome: u8,
+        proof: SettlementProofV3,
+    ) -> Result<()> {
+        instructions::settle_market_v3::handler(ctx, claimed_outcome, proof)
+    }
+
+    // ── Parametric prop vault ────────────────────────────────────────────
+    // A USDC vault that pays out automatically on a verified compound predicate,
+    // settled by a single validate_stat_v3 proof. The parlay machinery, pointed
+    // at parametric insurance instead of a pool.
+
+    /// Escrow USDC against a compound predicate. The predicate is fixed here and
+    /// structurally validated, so a vault that could never settle cannot be funded.
+    #[allow(clippy::too_many_arguments)]
+    pub fn initialize_prop_vault(
+        ctx: Context<InitializePropVault>,
+        vault_id: u64,
+        legs: Vec<StatLeg>,
+        predicates: Vec<LegPredicate>,
+        fixture_id: i64,
+        amount: u64,
+        beneficiary: Pubkey,
+        lock_time: i64,
+        resolution_timeout: i64,
+    ) -> Result<()> {
+        instructions::prop_vault::initialize_handler(
+            ctx,
+            vault_id,
+            legs,
+            predicates,
+            fixture_id,
+            amount,
+            beneficiary,
+            lock_time,
+            resolution_timeout,
+        )
+    }
+
+    /// Permissionless. The PROOF decides where the money goes: predicate holds ->
+    /// beneficiary, predicate fails -> depositor. No admin key on either path.
+    pub fn settle_prop_vault(
+        ctx: Context<SettlePropVault>,
+        proof: SettlementProofV3,
+    ) -> Result<()> {
+        instructions::prop_vault::settle_handler(ctx, proof)
+    }
+
+    /// Liveness backstop: after the timeout, anyone may return the money to the
+    /// depositor. The only non-proof path, and it can never pay the beneficiary.
+    pub fn cancel_prop_vault(ctx: Context<CancelPropVault>) -> Result<()> {
+        instructions::prop_vault::cancel_handler(ctx)
     }
 
     /// Pay a winner their pro-rata share of the (post-fee) pool. One-shot.

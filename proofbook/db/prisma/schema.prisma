@@ -202,14 +202,40 @@ model FeedEvent {
   @@map("feed_events")
 }
 
-/// Pool history, so the crowd's opinion over time is a real series and not a
-/// single sampled number.
+/// SHARP vs CROWD, as a time series.
+///
+/// Two opinions about the same match, side by side:
+///
+///   crowd  — ProofBook's own parimutuel pools. What the people betting here
+///            actually think, derived as pool[i] / totalPool.
+///
+///   sharp  — TxLINE's DEMARGINED consensus price (bookmaker
+///            "TXLineStablePriceDemargined"). Demargined means the overround is
+///            removed, so the implied probabilities sum to ~1.000 and the number
+///            is a real probability rather than a padded price. This is a SECOND
+///            TxLINE feed, entirely separate from the scores feed that settles
+///            markets.
+///
+/// The gap between them is the edge signal. Display only — no settlement, ever,
+/// touches an odds number.
+///
+/// `consensusPct` is null on rows taken before odds existed for that fixture:
+/// TxLINE only publishes odds from roughly a day before kickoff, and purges them
+/// afterwards. Absent is absent — it is never backfilled with a guess.
 model OddsSnapshot {
   id        BigInt   @id @default(autoincrement())
   marketPda String
   pools     BigInt[]
   totalPool BigInt
   takenAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  /// TxLINE demargined implied probability per outcome, aligned to the market's
+  /// outcome order. Empty when TxLINE published no odds at this instant.
+  consensusPct Float[]
+  /// Which book the consensus came from (e.g. TXLineStablePriceDemargined).
+  bookmaker String?
+  /// TxLINE's own timestamp for the odds tick (ms).
+  consensusTs BigInt?
 
   market Market @relation(fields: [marketPda], references: [pda], onDelete: Cascade)
 

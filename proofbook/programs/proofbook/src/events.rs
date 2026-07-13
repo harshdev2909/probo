@@ -102,3 +102,42 @@ pub struct FeesWithdrawn {
     pub fee_treasury: Pubkey,
     pub amount: u64,
 }
+
+/// A compound (multi-leg) resolution spec was attached to a market. Emitted at
+/// creation so an indexer can render the parlay's legs without reading the PDA.
+#[event]
+pub struct ComboSpecCreated {
+    pub market: Pubkey,
+    pub combo_spec: Pubkey,
+    pub fixture_id: i64,
+    pub market_type: u8,
+    pub num_legs: u8,
+    pub num_outcomes: u8,
+}
+
+/// A parametric prop vault was funded. The predicate is fixed from here.
+#[event]
+pub struct PropVaultCreated {
+    pub prop_vault: Pubkey,
+    pub depositor: Pubkey,
+    pub beneficiary: Pubkey,
+    pub fixture_id: i64,
+    pub amount: u64,
+    pub num_legs: u8,
+    pub lock_time: i64,
+}
+
+/// The vault resolved. `predicate_held` decided where the money went — not a key.
+#[event]
+pub struct PropVaultResolved {
+    pub prop_vault: Pubkey,
+    pub fixture_id: i64,
+    pub predicate_held: bool,
+    pub paid_to: Pubkey,
+    pub amount: u64,
+    pub proof_ref: [u8; 32],
+    pub proof_ts: i64,
+    pub daily_roots: Pubkey,
+    pub resolver: Pubkey,
+    pub settled_at: i64,
+}

@@ -14,8 +14,15 @@ import { FixtureCard } from "@/components/FixtureCard";
 import { StaggerItem } from "@/components/motion";
 import { QuarterLoader, EmptyState, ErrorState } from "@/components/primitives";
 import { PageArt } from "@/components/PageArt";
+import { SettlesItself } from "@/components/SettlesItself";
 
 type LoadState = "loading" | "ready" | "error";
+
+/** A fixture and every market provable on it. */
+interface Fixture {
+  head: MarketView;
+  others: MarketView[];
+}
 
 export default function Matches() {
   const [markets, setMarkets] = useState<MarketView[]>([]);
@@ -35,11 +42,50 @@ export default function Matches() {
   }, []);
   useStreamEvent("market", () => void load()); // markets change rarely; refetch on event
 
-  const live = markets.filter((m) => m.status === "locked" && isLivePhase(m.live?.statusId ?? undefined));
-  const open = markets.filter((m) => m.status === "open");
-  const done = markets.filter((m) => !live.includes(m) && !open.includes(m));
+  // ── one card per FIXTURE, not per market ──────────────────────────────────
+  //
+  // A fixture used to have exactly one market. It now has a dozen (goals,
+  // corners, cards, half-time, margin, four parlays), and listing markets
+  // directly showed the same match twelve times in a row.
+  //
+  // Group by fixture, pick a headline market to drive the card, and hang the
+  // rest off it as chips. The headline is the 1X2 where there is one — it is the
+  // market whose outcome bar reads as a scoreline — otherwise the deepest pool.
+  const byFixture = new Map<number, MarketView[]>();
+  for (const m of markets) {
+    const arr = byFixture.get(m.fixtureId) ?? [];
+    arr.push(m);
+    byFixture.set(m.fixtureId, arr);
+  }
 
-  const groups: [string, MarketView[]][] = [
+  // Explicit result types — the Half-Time Result market has the same 3-outcome
+  // shape, and its winner is not the match winner.
+  const RESULT_TYPES = new Set([3, 4, 28]);
+  const is1x2 = (m: MarketView) => RESULT_TYPES.has(m.marketType);
+
+  const fixtures: Fixture[] = [...byFixture.values()].map((ms) => {
+    const sorted = [...ms].sort((a, b) => {
+      // Prefer a settled market (it carries the receipt), then 1X2, then pool size.
+      const s = Number(b.status === "settled") - Number(a.status === "settled");
+      if (s) return s;
+      const x = Number(is1x2(b)) - Number(is1x2(a));
+      if (x) return x;
+      return Number(b.totalPool) - Number(a.totalPool);
+    });
+    return { head: sorted[0], others: sorted.slice(1) };
+  });
+
+  fixtures.sort((a, b) => a.head.kickoffTs - b.head.kickoffTs);
+
+  const live = fixtures.filter(
+    (f) =>
+      f.head.status === "locked" &&
+      isLivePhase(f.head.live?.statusId ?? undefined)
+  );
+  const open = fixtures.filter((f) => f.head.status === "open");
+  const done = fixtures.filter((f) => !live.includes(f) && !open.includes(f));
+
+  const groups: [string, Fixture[]][] = [
     ["Live now", live],
     ["Open for bets", open],
     ["Finished & settled", done],
@@ -79,6 +125,8 @@ export default function Matches() {
         </div>
       )}
 
+      {state === "ready" && <SettlesItself markets={markets} />}
+
       {state === "ready" &&
         groups.map(
           ([title, list]) =>
@@ -90,9 +138,9 @@ export default function Matches() {
                   <span className="rule flex-1" />
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
-                  {list.map((m) => (
-                    <StaggerItem key={m.marketPda} i={idx++}>
-                      <FixtureCard market={m} />
+                  {list.map((f) => (
+                    <StaggerItem key={f.head.fixtureId} i={idx++}>
+                      <FixtureCard market={f.head} others={f.others} />
                     </StaggerItem>
                   ))}
                 </div>

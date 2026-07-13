@@ -192,6 +192,19 @@ describe("keeper E2E — autonomous lifecycle (replay, mock oracle)", () => {
     assert.isString(receipt.settleTx);
     assert.isAbove(receipt.settleTx.length, 40);
     assert.equal(receipt.resolver, payer.publicKey.toBase58()); // the keeper wallet
+
+    // A LIVE settlement must carry the proven scoreline, not just the outcome.
+    // These are the values the merkle proof attests — never the feed's sampled
+    // Score. Without this the settler wrote a receipt with a blank scoreline and
+    // only backfilled markets ever showed one, so every receipt on the wall had
+    // to come from the backfiller.
+    assert.isOk(
+      receipt.provenScore,
+      "a live receipt must carry the proven scoreline"
+    );
+    assert.equal(receipt.provenScore.p1, 1, "proven P1 goals (recorded 1-4)");
+    assert.equal(receipt.provenScore.p2, 4, "proven P2 goals (recorded 1-4)");
+    assert.isNumber(receipt.statPeriod, "the period the proof commits to");
   });
 
   it("winner claims; loser cannot — funds flow correctly", async function () {

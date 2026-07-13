@@ -8,7 +8,7 @@ use crate::oracle::{ActiveOracle, OracleAdapter};
 use crate::state::{Market, MarketStatus, OutcomeSpec, OutcomeState};
 
 #[derive(Accounts)]
-#[instruction(fixture_id: i64, market_type: u8)]
+#[instruction(fixture_id: i64, market_type: u8, outcome_options: Vec<OutcomeSpec>)]
 pub struct InitializeMarket<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -16,7 +16,7 @@ pub struct InitializeMarket<'info> {
     #[account(
         init,
         payer = authority,
-        space = 8 + Market::INIT_SPACE,
+        space = Market::space(outcome_options.len()),
         seeds = [MARKET_SEED, authority.key().as_ref(), &fixture_id.to_le_bytes(), &[market_type]],
         bump,
     )]

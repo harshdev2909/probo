@@ -431,14 +431,24 @@ export const HOSTS = ["Canada", "Mexico", "United States"] as const;
 // ── Stage calendar (2026 tournament shape: 104 matches) ───────────────────────
 export type Stage = "Group" | "R32" | "R16" | "QF" | "SF" | "3rd" | "Final";
 
-/** Stage boundaries by kickoff date (UTC). Derived from the tournament calendar. */
+/**
+ * Stage boundaries by kickoff (UTC).
+ *
+ * Each stage ends at 08:00Z the morning AFTER its last LOCAL match day — not at
+ * UTC midnight. Every venue is UTC-4..UTC-7, so a 22:00 local kickoff lands at
+ * up to 03:00Z the NEXT UTC day. Midnight boundaries misfiled exactly those
+ * late games: Colombia v Ghana (Jul 4 01:30Z — an R32 game played the evening
+ * of Jul 3) showed as R16, and Argentina v Switzerland (Jul 12 01:00Z — a QF)
+ * showed as a semi-final, so the bracket rendered 17/9/3/3 ties instead of
+ * 16/8/4/2.
+ */
 const STAGE_BOUNDS: Array<[Stage, string]> = [
-  ["Group", "2026-06-27T23:59:59Z"],
-  ["R32", "2026-07-03T23:59:59Z"],
-  ["R16", "2026-07-07T23:59:59Z"],
-  ["QF", "2026-07-11T23:59:59Z"],
-  ["SF", "2026-07-15T23:59:59Z"],
-  ["3rd", "2026-07-18T12:00:00Z"],
+  ["Group", "2026-06-28T08:00:00Z"],
+  ["R32", "2026-07-04T08:00:00Z"],
+  ["R16", "2026-07-08T08:00:00Z"],
+  ["QF", "2026-07-12T08:00:00Z"],
+  ["SF", "2026-07-16T08:00:00Z"],
+  ["3rd", "2026-07-19T08:00:00Z"],
   ["Final", "2026-12-31T23:59:59Z"],
 ];
 

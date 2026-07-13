@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { api, type MarketView } from "@/lib/api";
-import { bracketOf, toFixture, winnerOf, type Fixture } from "@/lib/tournament";
+import { bracketOf, headlineMarkets, toFixture, winnerOf, type Fixture } from "@/lib/tournament";
 import { StaggerItem } from "@/components/motion";
 import { QuarterLoader, EmptyState, ErrorState } from "@/components/primitives";
 import { PageArt } from "@/components/PageArt";
@@ -103,7 +103,7 @@ export default function Bracket() {
 
   useEffect(() => { void load(); }, []);
 
-  const rounds = useMemo(() => bracketOf(markets.map(toFixture)), [markets]);
+  const rounds = useMemo(() => bracketOf(headlineMarkets(markets).map(toFixture)), [markets]);
 
   return (
     <main className="mx-auto w-full max-w-[1400px] px-6 pt-12 lg:px-10">

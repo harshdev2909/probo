@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::MS_PER_DAY;
+use crate::constants::{COMBO_MARKET_TYPE_MIN, MS_PER_DAY};
 use crate::error::ProofbookError;
 use crate::events::{MarketCancelled, MarketSettled};
 use crate::math;
@@ -46,6 +46,16 @@ pub fn handler(
         ProofbookError::InvalidOutcomeIndex
     );
 
+    // A compound market's real predicate lives in its ComboSpec sidecar, and
+    // `Market.outcomes[i].spec` can only ever hold a single 1-2 stat predicate.
+    // Settling one here would prove ONE LEG and pay out the whole parlay — e.g.
+    // "Home win AND over 9.5 corners" would settle on "Home win" alone. Route
+    // them to settle_market_v3, which proves every leg in one CPI.
+    require!(
+        ctx.accounts.market.market_type < COMBO_MARKET_TYPE_MIN,
+        ProofbookError::ComboRequiresV3
+    );
+
     // The trusted oracle must be exactly the active adapter's program.
     require_keys_eq!(
         ctx.accounts.oracle_program.key(),
@@ -66,17 +76,42 @@ pub fn handler(
     )?;
     require!(verified, ProofbookError::OutcomeNotVerified);
 
-    // ── Record the Proof Receipt (see docs/ONCHAIN_INTERFACE.md). ────────
-    let now = Clock::get()?.unix_timestamp;
-    let epoch_day = proof.ts.div_euclid(MS_PER_DAY) as u16;
-    let daily_roots = ctx.accounts.oracle_roots.key();
-    let resolver = ctx.accounts.cranker.key();
+    record_settlement(
+        ctx.accounts.market.key(),
+        &mut ctx.accounts.market,
+        claimed_outcome,
+        proof.ts,
+        proof.fixture_summary.events_sub_tree_root,
+        ctx.accounts.oracle_roots.key(),
+        ctx.accounts.cranker.key(),
+        verified,
+    )
+}
 
-    let market = &mut ctx.accounts.market;
+/// Write the Proof Receipt and move the market to its terminal state.
+///
+/// Shared verbatim by `settle_market` (v2) and `settle_market_v3` (compound).
+/// The two paths differ ONLY in how an outcome is proven; everything that
+/// touches money — the zero-winning-pool policy, the fee, the receipt fields —
+/// must stay one implementation, or the parlay path would be a second, unaudited
+/// copy of the payout logic.
+pub fn record_settlement(
+    market_key: Pubkey,
+    market: &mut Market,
+    claimed_outcome: u8,
+    proof_ts: i64,
+    proof_ref: [u8; 32],
+    daily_roots: Pubkey,
+    resolver: Pubkey,
+    verified: bool,
+) -> Result<()> {
+    let now = Clock::get()?.unix_timestamp;
+    let epoch_day = proof_ts.div_euclid(MS_PER_DAY) as u16;
+
     market.winning_outcome = claimed_outcome;
     market.settled_at = now;
-    market.settle_proof_ref = proof.fixture_summary.events_sub_tree_root;
-    market.settle_proof_ts = proof.ts;
+    market.settle_proof_ref = proof_ref;
+    market.settle_proof_ts = proof_ts;
     market.settle_epoch_day = epoch_day;
     market.settle_daily_roots = daily_roots;
     market.settle_resolver = resolver;
@@ -98,13 +133,13 @@ pub fn handler(
     }
 
     emit!(MarketSettled {
-        market: market.key(),
+        market: market_key,
         fixture_id: market.fixture_id,
         winning_outcome: claimed_outcome,
         oracle_program: market.oracle_program,
         oracle_label: ActiveOracle::LABEL.to_string(),
         proof_ref: market.settle_proof_ref,
-        proof_ts: proof.ts,
+        proof_ts,
         epoch_day,
         daily_roots,
         resolver,
@@ -118,7 +153,7 @@ pub fn handler(
 
     if refundable {
         emit!(MarketCancelled {
-            market: market.key(),
+            market: market_key,
             fixture_id: market.fixture_id,
             reason: "zero_winning_pool".to_string(),
             cancelled_at: now,

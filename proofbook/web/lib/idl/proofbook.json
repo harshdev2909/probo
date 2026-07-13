@@ -39,6 +39,52 @@
       "args": []
     },
     {
+      "name": "cancel_prop_vault",
+      "docs": [
+        "Liveness backstop: after the timeout, anyone may return the money to the",
+        "depositor. The only non-proof path, and it can never pay the beneficiary."
+      ],
+      "discriminator": [
+        28,
+        226,
+        60,
+        226,
+        58,
+        45,
+        91,
+        119
+      ],
+      "accounts": [
+        {
+          "name": "canceller",
+          "docs": [
+            "Permissionless liveness backstop."
+          ],
+          "signer": true
+        },
+        {
+          "name": "prop_vault",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "relations": [
+            "prop_vault"
+          ]
+        },
+        {
+          "name": "depositor_token",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "claim_refund",
       "docs": [
         "On a Cancelled market, reclaim the exact original stake (no fee). One-shot."
@@ -182,6 +228,86 @@
       "args": []
     },
     {
+      "name": "initialize_combo_spec",
+      "docs": [
+        "Attach a compound (multi-leg) resolution spec to a market, so it can be",
+        "settled by proving several stats in ONE `validate_stat_v3` CPI.",
+        "Open markets only; the spec is structurally validated on the way in."
+      ],
+      "discriminator": [
+        216,
+        84,
+        17,
+        129,
+        38,
+        134,
+        129,
+        184
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "The market's creator. Has no power over settlement — only over which",
+            "predicate the market was BORN with, which is exactly what this sets."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "combo_spec",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  109,
+                  98,
+                  111
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "legs",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "StatLeg"
+              }
+            }
+          }
+        },
+        {
+          "name": "outcomes",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "ComboOutcome"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "initialize_market",
       "docs": [
         "Create a market PDA + USDC vault. Validates fee, outcome count, lock time,",
@@ -283,6 +409,151 @@
         {
           "name": "fee_treasury",
           "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "initialize_prop_vault",
+      "docs": [
+        "Escrow USDC against a compound predicate. The predicate is fixed here and",
+        "structurally validated, so a vault that could never settle cannot be funded."
+      ],
+      "discriminator": [
+        27,
+        52,
+        90,
+        141,
+        213,
+        14,
+        164,
+        184
+      ],
+      "accounts": [
+        {
+          "name": "depositor",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "prop_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  112,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "depositor"
+              },
+              {
+                "kind": "arg",
+                "path": "vault_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Escrow, owned by the vault PDA. Not by us, and not by the beneficiary."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "prop_vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "depositor_token",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "vault_id",
+          "type": "u64"
+        },
+        {
+          "name": "legs",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "StatLeg"
+              }
+            }
+          }
+        },
+        {
+          "name": "predicates",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "LegPredicate"
+              }
+            }
+          }
+        },
+        {
+          "name": "fixture_id",
+          "type": "i64"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "beneficiary",
+          "type": "pubkey"
+        },
+        {
+          "name": "lock_time",
+          "type": "i64"
+        },
+        {
+          "name": "resolution_timeout",
+          "type": "i64"
         }
       ]
     },
@@ -463,6 +734,165 @@
       ]
     },
     {
+      "name": "settle_market_v3",
+      "docs": [
+        "Locked -> Settled for a COMPOUND market: every leg proven together against",
+        "one shared Merkle multiproof, in a single `validate_stat_v3` CPI."
+      ],
+      "discriminator": [
+        137,
+        43,
+        217,
+        201,
+        230,
+        152,
+        227,
+        248
+      ],
+      "accounts": [
+        {
+          "name": "cranker",
+          "docs": [
+            "Permissionless settler (pays fees; has no special authority)."
+          ],
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "combo_spec",
+          "docs": [
+            "The compound predicate. Bound to this market by PDA seeds AND by the",
+            "stored `market` field — a spec from another market cannot be substituted."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  109,
+                  98,
+                  111
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_program",
+          "docs": [
+            "equal the active adapter's program id. It is the `validate_stat_v3` target."
+          ],
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "oracle_roots",
+          "docs": [
+            "derived from `oracle_program` and `proof.ts`. Read-only in the CPI."
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "claimed_outcome",
+          "type": "u8"
+        },
+        {
+          "name": "proof",
+          "type": {
+            "defined": {
+              "name": "SettlementProofV3"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "settle_prop_vault",
+      "docs": [
+        "Permissionless. The PROOF decides where the money goes: predicate holds ->",
+        "beneficiary, predicate fails -> depositor. No admin key on either path."
+      ],
+      "discriminator": [
+        7,
+        20,
+        198,
+        247,
+        175,
+        86,
+        107,
+        8
+      ],
+      "accounts": [
+        {
+          "name": "cranker",
+          "docs": [
+            "Permissionless. Whoever holds a valid proof may trigger this; they gain",
+            "nothing by it. The PROOF decides where the money goes, not the caller."
+          ],
+          "signer": true
+        },
+        {
+          "name": "prop_vault",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "relations": [
+            "prop_vault"
+          ]
+        },
+        {
+          "name": "beneficiary_token",
+          "docs": [
+            "Paid iff the predicate HOLDS."
+          ],
+          "writable": true
+        },
+        {
+          "name": "depositor_token",
+          "docs": [
+            "Refunded iff the predicate FAILS."
+          ],
+          "writable": true
+        },
+        {
+          "name": "oracle_program",
+          "relations": [
+            "prop_vault"
+          ]
+        },
+        {
+          "name": "oracle_roots"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "proof",
+          "type": {
+            "defined": {
+              "name": "SettlementProofV3"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "withdraw_fees",
       "docs": [
         "Push the accrued protocol fee to the treasury. Settled markets only, once."
@@ -519,6 +949,19 @@
   ],
   "accounts": [
     {
+      "name": "ComboSpec",
+      "discriminator": [
+        140,
+        68,
+        118,
+        38,
+        209,
+        141,
+        0,
+        208
+      ]
+    },
+    {
       "name": "Market",
       "discriminator": [
         219,
@@ -543,6 +986,19 @@
         247,
         208
       ]
+    },
+    {
+      "name": "PropVault",
+      "discriminator": [
+        181,
+        216,
+        4,
+        209,
+        2,
+        195,
+        19,
+        233
+      ]
     }
   ],
   "events": [
@@ -557,6 +1013,19 @@
         206,
         32,
         0
+      ]
+    },
+    {
+      "name": "ComboSpecCreated",
+      "discriminator": [
+        251,
+        150,
+        201,
+        116,
+        98,
+        63,
+        219,
+        41
       ]
     },
     {
@@ -622,6 +1091,32 @@
         117,
         215,
         99
+      ]
+    },
+    {
+      "name": "PropVaultCreated",
+      "discriminator": [
+        95,
+        192,
+        115,
+        207,
+        39,
+        160,
+        171,
+        168
+      ]
+    },
+    {
+      "name": "PropVaultResolved",
+      "discriminator": [
+        28,
+        228,
+        3,
+        72,
+        50,
+        89,
+        57,
+        87
       ]
     },
     {
@@ -764,71 +1259,121 @@
     },
     {
       "code": 6022,
+      "name": "InvalidComboSpec",
+      "msg": "Compound market spec is malformed (leg count, outcome count, or an out-of-range leg index)."
+    },
+    {
+      "code": 6023,
+      "name": "DuplicateLegCoverage",
+      "msg": "A leg is evaluated more than once by one outcome; TxLINE rejects duplicate stat coverage."
+    },
+    {
+      "code": 6024,
+      "name": "IncompleteLegCoverage",
+      "msg": "An outcome leaves a leg unevaluated; TxLINE requires every proven stat to be covered."
+    },
+    {
+      "code": 6025,
+      "name": "WrongComboSpec",
+      "msg": "This ComboSpec does not belong to the market being settled."
+    },
+    {
+      "code": 6026,
+      "name": "ComboRequiresV3",
+      "msg": "Compound markets must be settled with settle_market_v3, not settle_market."
+    },
+    {
+      "code": 6027,
+      "name": "NotAComboMarket",
+      "msg": "settle_market_v3 requires a compound market type (>= COMBO_MARKET_TYPE_MIN)."
+    },
+    {
+      "code": 6028,
+      "name": "LegCountMismatch",
+      "msg": "Proof leaf count does not match the ComboSpec's leg count."
+    },
+    {
+      "code": 6029,
+      "name": "LegStatMismatch",
+      "msg": "Proof leaf does not match the stat (key/period) the ComboSpec pins for that leg."
+    },
+    {
+      "code": 6030,
+      "name": "WrongBeneficiary",
+      "msg": "Provided beneficiary token account is not owned by the vault's beneficiary."
+    },
+    {
+      "code": 6031,
+      "name": "WrongDepositor",
+      "msg": "Provided depositor token account is not owned by the vault's depositor."
+    },
+    {
+      "code": 6032,
       "name": "NotSettled",
       "msg": "Market is not settled yet."
     },
     {
-      "code": 6023,
+      "code": 6033,
       "name": "AlreadyClaimed",
       "msg": "Position has already been claimed."
     },
     {
-      "code": 6024,
+      "code": 6034,
       "name": "NotAWinningPosition",
       "msg": "This position did not back the winning outcome; no payout."
     },
     {
-      "code": 6025,
+      "code": 6035,
       "name": "ZeroWinningPool",
       "msg": "Winning pool has zero stake; nothing to claim."
     },
     {
-      "code": 6026,
+      "code": 6036,
       "name": "WrongVault",
       "msg": "Provided vault does not belong to this market."
     },
     {
-      "code": 6027,
+      "code": 6037,
       "name": "InvalidResolutionTimeout",
       "msg": "Resolution timeout must be positive."
     },
     {
-      "code": 6028,
+      "code": 6038,
       "name": "AlreadyResolved",
       "msg": "Market is already resolved (Settled or Cancelled)."
     },
     {
-      "code": 6029,
+      "code": 6039,
       "name": "TooEarlyToCancel",
       "msg": "Too early to cancel: now <= lock_time + resolution_timeout."
     },
     {
-      "code": 6030,
+      "code": 6040,
       "name": "NotCancelled",
       "msg": "Market is not cancelled; refunds are not available."
     },
     {
-      "code": 6031,
+      "code": 6041,
       "name": "WrongFeeTreasury",
       "msg": "Provided fee destination is not owned by the market's fee treasury."
     },
     {
-      "code": 6032,
+      "code": 6042,
       "name": "FeesAlreadyWithdrawn",
       "msg": "Protocol fee has already been withdrawn."
     },
     {
-      "code": 6033,
+      "code": 6043,
       "name": "NothingToWithdraw",
       "msg": "There is no fee to withdraw (zero-fee or cancelled market)."
     },
     {
-      "code": 6034,
+      "code": 6044,
       "name": "MathOverflow",
       "msg": "Arithmetic overflow."
     },
     {
-      "code": 6035,
+      "code": 6045,
       "name": "MathUnderflow",
       "msg": "Arithmetic underflow."
     }
@@ -885,6 +1430,123 @@
       }
     },
     {
+      "name": "ComboOutcome",
+      "docs": [
+        "One outcome of a compound market: an AND of predicates over the market's legs."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "predicates",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "LegPredicate"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ComboSpec",
+      "docs": [
+        "The compound resolution spec for a market, at PDA `[\"combo\", market]`.",
+        "",
+        "INVARIANT (enforced at init, so it cannot fail at settle time): every outcome",
+        "must reference EVERY leg EXACTLY ONCE. TxLINE validates the whole payload in",
+        "one shot and errors if any proven stat is evaluated twice",
+        "(`DuplicateStatCoverage`, 6070) or left unevaluated (`IncompleteStatCoverage`,",
+        "6071) — both confirmed live against the devnet oracle. Checking it here turns",
+        "two settle-time failure modes into one create-time failure.",
+        "",
+        "A direct consequence: a parlay's legs must read DISJOINT stats. \"Home win AND",
+        "over 2.5 goals\" is NOT expressible — both legs read goals P1/P2 — while",
+        "\"Home win AND over 9.5 corners\" is, because goals and corners are disjoint."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "docs": [
+              "The market this spec resolves. Checked against the passed market at settle."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "legs",
+            "docs": [
+              "The stats proven for this market. Order defines the `LegPredicate` indices",
+              "AND the order of `statKeys` in the proof request — they must agree."
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "StatLeg"
+                }
+              }
+            }
+          },
+          {
+            "name": "outcomes",
+            "docs": [
+              "One entry per market outcome, in the same order as `Market.outcomes`."
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "ComboOutcome"
+                }
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ComboSpecCreated",
+      "docs": [
+        "A compound (multi-leg) resolution spec was attached to a market. Emitted at",
+        "creation so an indexer can render the parlay's legs without reading the PDA."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "combo_spec",
+            "type": "pubkey"
+          },
+          {
+            "name": "fixture_id",
+            "type": "i64"
+          },
+          {
+            "name": "market_type",
+            "type": "u8"
+          },
+          {
+            "name": "num_legs",
+            "type": "u8"
+          },
+          {
+            "name": "num_outcomes",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "Comparison",
       "type": {
         "kind": "enum",
@@ -917,6 +1579,72 @@
           {
             "name": "amount",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LegPredicate",
+      "docs": [
+        "A predicate over one leg, or over two legs combined with `op`.",
+        "Indices are into `ComboSpec.legs`."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Single",
+            "fields": [
+              {
+                "name": "index",
+                "type": "u8"
+              },
+              {
+                "name": "comparison",
+                "type": {
+                  "defined": {
+                    "name": "Comparison"
+                  }
+                }
+              },
+              {
+                "name": "threshold",
+                "type": "i32"
+              }
+            ]
+          },
+          {
+            "name": "Binary",
+            "fields": [
+              {
+                "name": "index_a",
+                "type": "u8"
+              },
+              {
+                "name": "index_b",
+                "type": "u8"
+              },
+              {
+                "name": "op",
+                "type": {
+                  "defined": {
+                    "name": "BinaryExpression"
+                  }
+                }
+              },
+              {
+                "name": "comparison",
+                "type": {
+                  "defined": {
+                    "name": "Comparison"
+                  }
+                }
+              },
+              {
+                "name": "threshold",
+                "type": "i32"
+              }
+            ]
           }
         ]
       }
@@ -1503,6 +2231,243 @@
       }
     },
     {
+      "name": "PropVault",
+      "docs": [
+        "A USDC vault that pays out automatically on a verified compound predicate.",
+        "",
+        "\"Team A corners + Team B corners > 10\" — parametric insurance whose parameter",
+        "is a merkle-proven fact rather than an adjuster's opinion. Settled by a SINGLE",
+        "`validate_stat_v3` proof, permissionlessly.",
+        "",
+        "The predicate is the same shape as a parlay's: an AND over legs, with the same",
+        "coverage invariant (every leg evaluated exactly once). It is fixed at creation",
+        "and validated there, so a vault that could never settle cannot be funded."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "depositor",
+            "type": "pubkey"
+          },
+          {
+            "name": "beneficiary",
+            "docs": [
+              "Paid iff the predicate holds. May be the depositor (a self-hedge)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "vault_id",
+            "docs": [
+              "Distinguishes several vaults from the same depositor (PDA seed)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "fixture_id",
+            "type": "i64"
+          },
+          {
+            "name": "usdc_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "VaultStatus"
+              }
+            }
+          },
+          {
+            "name": "legs",
+            "docs": [
+              "The stats proven. Order defines the predicate index space."
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "StatLeg"
+                }
+              }
+            }
+          },
+          {
+            "name": "predicates",
+            "docs": [
+              "AND-combined. Must cover every leg exactly once."
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "LegPredicate"
+                }
+              }
+            }
+          },
+          {
+            "name": "lock_time",
+            "docs": [
+              "The result is not knowable before this; settlement is refused earlier."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "resolution_timeout",
+            "docs": [
+              "After `lock_time + this`, anyone may refund the depositor."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "oracle_program",
+            "type": "pubkey"
+          },
+          {
+            "name": "settled_at",
+            "type": "i64"
+          },
+          {
+            "name": "settle_proof_ref",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "settle_proof_ts",
+            "type": "i64"
+          },
+          {
+            "name": "settle_epoch_day",
+            "type": "u16"
+          },
+          {
+            "name": "settle_daily_roots",
+            "type": "pubkey"
+          },
+          {
+            "name": "settle_resolver",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "vault_bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PropVaultCreated",
+      "docs": [
+        "A parametric prop vault was funded. The predicate is fixed from here."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "prop_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "depositor",
+            "type": "pubkey"
+          },
+          {
+            "name": "beneficiary",
+            "type": "pubkey"
+          },
+          {
+            "name": "fixture_id",
+            "type": "i64"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "num_legs",
+            "type": "u8"
+          },
+          {
+            "name": "lock_time",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PropVaultResolved",
+      "docs": [
+        "The vault resolved. `predicate_held` decided where the money went — not a key."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "prop_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "fixture_id",
+            "type": "i64"
+          },
+          {
+            "name": "predicate_held",
+            "type": "bool"
+          },
+          {
+            "name": "paid_to",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "proof_ref",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "proof_ts",
+            "type": "i64"
+          },
+          {
+            "name": "daily_roots",
+            "type": "pubkey"
+          },
+          {
+            "name": "resolver",
+            "type": "pubkey"
+          },
+          {
+            "name": "settled_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
       "name": "RefundClaimed",
       "type": {
         "kind": "struct",
@@ -1672,6 +2637,125 @@
       }
     },
     {
+      "name": "SettlementProofV3",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "ts",
+            "docs": [
+              "Batch timestamp (Unix ms) — selects the daily root PDA."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "fixture_summary",
+            "type": {
+              "defined": {
+                "name": "ScoresBatchSummary"
+              }
+            }
+          },
+          {
+            "name": "fixture_proof",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "ProofNode"
+                }
+              }
+            }
+          },
+          {
+            "name": "main_tree_proof",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "ProofNode"
+                }
+              }
+            }
+          },
+          {
+            "name": "event_stat_root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "leaf_values",
+            "docs": [
+              "Proven value of each leg, in `ComboSpec.legs` order. Keys/periods are NOT",
+              "taken from here — they come from the spec."
+            ],
+            "type": {
+              "vec": "i32"
+            }
+          },
+          {
+            "name": "multiproof_hashes",
+            "docs": [
+              "The shared multiproof: sibling hashes + the leaves' indices in the tree."
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "ProofNode"
+                }
+              }
+            }
+          },
+          {
+            "name": "leaf_indices",
+            "type": {
+              "vec": "u32"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "StatLeg",
+      "docs": [
+        "One stat this market proves: a TxLINE `(key, period)` pair.",
+        "`key = period*1000 + base`, where base 1/2 = goals, 3/4 = yellows,",
+        "5/6 = reds, 7/8 = corners. `period` is the ScoreStat period (100 = finalised)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "key",
+            "type": "u32"
+          },
+          {
+            "name": "period",
+            "type": "i32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Funded"
+          },
+          {
+            "name": "PaidOut"
+          },
+          {
+            "name": "Refunded"
+          }
+        ]
+      }
+    },
+    {
       "name": "WinningsClaimed",
       "type": {
         "kind": "struct",
@@ -1709,6 +2793,14 @@
   ],
   "constants": [
     {
+      "name": "COMBO_SEED",
+      "docs": [
+        "Sidecar holding a compound (multi-leg) resolution spec for a market."
+      ],
+      "type": "bytes",
+      "value": "[99, 111, 109, 98, 111]"
+    },
+    {
       "name": "MARKET_SEED",
       "type": "bytes",
       "value": "[109, 97, 114, 107, 101, 116]"
@@ -1717,6 +2809,14 @@
       "name": "POSITION_SEED",
       "type": "bytes",
       "value": "[112, 111, 115, 105, 116, 105, 111, 110]"
+    },
+    {
+      "name": "PROP_VAULT_SEED",
+      "docs": [
+        "Parametric prop vault: pays out on a verified compound predicate."
+      ],
+      "type": "bytes",
+      "value": "[112, 114, 111, 112, 95, 118, 97, 117, 108, 116]"
     },
     {
       "name": "VAULT_SEED",

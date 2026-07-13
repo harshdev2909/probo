@@ -19,6 +19,36 @@ export type Stage = "Group" | "R32" | "R16" | "QF" | "SF" | "3rd" | "Final";
 
 export const KO_ORDER: Stage[] = ["R32", "R16", "QF", "SF", "3rd", "Final"];
 
+/**
+ * One market per fixture — the 1X2 that carries the RESULT.
+ *
+ * A fixture now has a dozen markets (goals, corners, cards, parlays...). Feeding
+ * them all into per-fixture derivations was a real bug twice over: every bracket
+ * tie rendered once PER MARKET (thirteen "Switzerland v Bosnia" rows), and
+ * standings counted each match thirteen times. Worse, `winningOutcome === 0`
+ * only means "home won" on a 1X2 market — on a corners Over/Under it means
+ * "Over", and reading it as a match result invents a winner.
+ *
+ * So tournament math sees exactly one market per fixture: the 1X2, preferring a
+ * settled one (it carries the receipt).
+ */
+export function headlineMarkets(markets: MarketView[]): MarketView[] {
+  // Explicit result types (3/4 legacy generations, 28 catalogue). Shape-matching
+  // on ["Home","Draw","Away"] is NOT enough: the Half-Time Result market has the
+  // identical shape, and a team can lead at half-time and lose the match.
+  const RESULT_TYPES = new Set([3, 4, 28]);
+  const is1x2 = (m: MarketView) => RESULT_TYPES.has(m.marketType);
+  const best = new Map<number, MarketView>();
+  for (const m of markets) {
+    if (!is1x2(m)) continue;
+    const cur = best.get(m.fixtureId);
+    if (!cur || (m.status === "settled" && cur.status !== "settled")) {
+      best.set(m.fixtureId, m);
+    }
+  }
+  return [...best.values()];
+}
+
 export interface Fixture {
   market: MarketView;
   home: Team;

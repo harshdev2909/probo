@@ -23,7 +23,13 @@ import { KeeperConfig, ROOT } from "../config";
 import { keypairFromSecret } from "../../../shared/keys";
 import { Logger } from "../logger";
 import { Store, type StoreLike } from "../state";
-import { marketPda, vaultPda, positionPda, dailyRootsPda } from "./pdas";
+import {
+  marketPda,
+  vaultPda,
+  positionPda,
+  dailyRootsPda,
+  comboSpecPda,
+} from "./pdas";
 import { buildMockProof } from "./mockProof";
 
 export const TXLINE_DEVNET = new PublicKey(
@@ -129,7 +135,16 @@ export class Chain {
     this.provider = new anchor.AnchorProvider(
       this.connection,
       new anchor.Wallet(this.wallet),
-      { commitment: "confirmed" }
+      {
+        commitment: "confirmed",
+        // Keep re-broadcasting until the blockhash actually expires. A devnet
+        // transaction with no priority fee is dropped under load, and the
+        // default single-shot send then "fails" a transaction that never landed
+        // at all. Bulk market creation hit exactly this: fine for ~50 txs, then
+        // every one timed out at 30s having never been included.
+        maxRetries: 5,
+        skipPreflight: false,
+      }
     );
     anchor.setProvider(this.provider);
 
@@ -248,25 +263,43 @@ export class Chain {
     amounts: BN[]
   ): Promise<string> {
     const m = await this.program.account.market.fetch(market);
-    const tx = new Transaction();
-    for (let i = 0; i < bettors.length; i++) {
-      tx.add(
-        await this.program.methods
-          .placeBet(i, amounts[i])
-          .accounts({
-            bettor: bettors[i].publicKey,
-            market,
-            bettorToken: getAssociatedTokenAddressSync(
-              m.usdcMint,
-              bettors[i].publicKey
-            ),
-            vault: m.vault,
-            tokenProgram: TOKEN_PROGRAM_ID,
-          })
-          .instruction()
-      );
+
+    // Atomicity is what stops a market ending up with SOME outcomes staked and
+    // one at zero — which, if that outcome then wins, routes the market to
+    // Cancelled and it never earns a receipt.
+    //
+    // But a place_bet instruction carries eight accounts, and five of them do not
+    // fit in a 1232-byte transaction: a 5-outcome market (winning_margin) failed
+    // to stake every time. So bet in the largest batches that DO fit, and treat
+    // the batches as a unit — if a later one fails, the caller's zero-stake guard
+    // refuses to settle the market rather than settling it half-staked.
+    const BATCH = 3;
+    let last = "";
+    for (let start = 0; start < bettors.length; start += BATCH) {
+      const slice = bettors.slice(start, start + BATCH);
+      const tx = new Transaction();
+      tx.add(this.priorityIx());
+      for (let j = 0; j < slice.length; j++) {
+        const i = start + j;
+        tx.add(
+          await this.program.methods
+            .placeBet(i, amounts[i])
+            .accounts({
+              bettor: slice[j].publicKey,
+              market,
+              bettorToken: getAssociatedTokenAddressSync(
+                m.usdcMint,
+                slice[j].publicKey
+              ),
+              vault: m.vault,
+              tokenProgram: TOKEN_PROGRAM_ID,
+            })
+            .instruction()
+        );
+      }
+      last = await this.provider.sendAndConfirm!(tx, slice);
     }
-    return this.provider.sendAndConfirm!(tx, bettors);
+    return last;
   }
 
   /**
@@ -392,10 +425,173 @@ export class Chain {
     return { market, sig };
   }
 
+  /**
+   * A priority-fee instruction.
+   *
+   * Devnet drops fee-less transactions under load. Bulk market creation was
+   * losing every transaction after the first ~50 — they were never included at
+   * all, so `sendAndConfirm` timed out on a signature that did not exist. A few
+   * thousand micro-lamports per CU is negligible and makes inclusion reliable.
+   */
+  private priorityIx() {
+    return ComputeBudgetProgram.setComputeUnitPrice({
+      microLamports: Number(process.env.PRIORITY_FEE_MICROLAMPORTS ?? 20_000),
+    });
+  }
+
+  /** The compound-spec sidecar PDA for a market. */
+  comboSpecPdaFor(market: PublicKey): PublicKey {
+    return comboSpecPda(this.program.programId, market);
+  }
+
+  /**
+   * Create a COMPOUND market: an ordinary Market (same vault, same pools, same
+   * parimutuel math) plus a ComboSpec sidecar carrying the multi-leg predicate.
+   *
+   * Both in ONE transaction. A Market whose ComboSpec creation failed is a
+   * market that can never be settled — `settle_market` refuses compound types
+   * and `settle_market_v3` needs the sidecar — so it would be stranded until the
+   * cancel backstop refunded it. Atomicity removes that state entirely.
+   */
+  async initializeComboMarket(
+    fixtureId: number,
+    def: {
+      type: number;
+      legs: { key: number; period: number }[];
+      outcomes: { predicates: any[] }[];
+    },
+    usdcMint: PublicKey,
+    lockTime: number,
+    resolutionTimeoutSec: number
+  ): Promise<{ market: PublicKey; comboSpec: PublicKey; sig: string }> {
+    const market = this.marketPdaFor(fixtureId, def.type);
+    const comboSpec = this.comboSpecPdaFor(market);
+    const feeTreasury = this.cfg.feeTreasury
+      ? new PublicKey(this.cfg.feeTreasury)
+      : this.wallet.publicKey;
+
+    // The Market still carries `num_outcomes` OutcomeSpecs, but the v3 path never
+    // reads them — the predicate comes from the ComboSpec. Fill them with a
+    // harmless single-stat spec on the first leg, so the account is well-formed.
+    const filler = {
+      statAKey: def.legs[0].key,
+      statAPeriod: def.legs[0].period,
+      hasStatB: false,
+      statBKey: 0,
+      statBPeriod: 0,
+      op: null,
+      comparison: { equalTo: {} },
+      threshold: 0,
+    };
+    const specs = def.outcomes.map(() => filler);
+
+    // initialize_market and initialize_combo_spec used to go in ONE transaction,
+    // so a market could never exist without its spec. But a 5-outcome market
+    // overflows the 1232-byte transaction limit that way (winning_margin failed
+    // every time: 1273 > 1232), so they are split.
+    //
+    // The stranding risk that atomicity guarded against is handled instead by
+    // making the pair RECOVERABLE: a market with no ComboSpec is still Open, and
+    // `ensureComboSpec` below attaches one on the next pass. Nothing is lost.
+    const tx = new Transaction();
+    tx.add(this.priorityIx());
+    tx.add(
+      await this.program.methods
+        .initializeMarket(
+          new BN(fixtureId),
+          def.type,
+          specs,
+          this.cfg.feeBps,
+          new BN(lockTime),
+          new BN(resolutionTimeoutSec),
+          feeTreasury
+        )
+        .accounts({
+          authority: this.wallet.publicKey,
+          market,
+          usdcMint,
+          vault: vaultPda(this.program.programId, market),
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .instruction()
+    );
+    const sig = await this.provider.sendAndConfirm!(tx, []);
+    await this.ensureComboSpec(market, def);
+    return { market, comboSpec, sig };
+  }
+
+  /** Attach the compound spec if the market does not already have one. */
+  async ensureComboSpec(
+    market: PublicKey,
+    def: {
+      legs: { key: number; period: number }[];
+      outcomes: { predicates: any[] }[];
+    }
+  ): Promise<void> {
+    if (await this.fetchComboSpec(market)) return;
+    const tx = new Transaction();
+    tx.add(this.priorityIx());
+    tx.add(
+      await this.program.methods
+        .initializeComboSpec(
+          def.legs,
+          def.outcomes.map((o) => ({ predicates: o.predicates }))
+        )
+        .accounts({
+          authority: this.wallet.publicKey,
+          market,
+          comboSpec: this.comboSpecPdaFor(market),
+          systemProgram: SystemProgram.programId,
+        })
+        .instruction()
+    );
+    await this.provider.sendAndConfirm!(tx, []);
+  }
+
+  /** Fetch a ComboSpec, or null if the market has none. */
+  async fetchComboSpec(market: PublicKey): Promise<any | null> {
+    try {
+      return await (this.program.account as any).comboSpec.fetch(
+        this.comboSpecPdaFor(market)
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Settle a compound market: EVERY leg proven together in one
+   * `validate_stat_v3` CPI, against a single shared Merkle multiproof.
+   */
+  async settleMarketV3(
+    market: PublicKey,
+    claimedOutcome: number,
+    proof: any,
+    epochDay: number
+  ): Promise<string> {
+    return this.program.methods
+      .settleMarketV3(claimedOutcome, proof)
+      .accounts({
+        cranker: this.wallet.publicKey,
+        market,
+        comboSpec: this.comboSpecPdaFor(market),
+        oracleProgram: this.oracleProgramId,
+        oracleRoots: dailyRootsPda(this.oracleProgramId, epochDay),
+      })
+      .preInstructions([
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
+        this.priorityIx(),
+      ])
+      .rpc();
+  }
+
   async lockMarket(market: PublicKey): Promise<string> {
     return this.program.methods
       .lockMarket()
       .accounts({ market, cranker: this.wallet.publicKey })
+      .preInstructions([this.priorityIx()])
       .rpc();
   }
 

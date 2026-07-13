@@ -17,6 +17,9 @@ import { Flag } from "@/components/Flag";
 import { RollingNumber, LiveBadge } from "@/components/Score";
 import { BetSlip } from "@/components/BetSlip";
 import { Ticker } from "@/components/Ticker";
+import { SharpVsCrowd } from "@/components/SharpVsCrowd";
+import { ParlayGrid } from "@/components/ParlayGrid";
+import { FixtureMarkets } from "@/components/FixtureMarkets";
 import { StaggerItem, Reveal } from "@/components/motion";
 import { QuarterLoader, ErrorState, Hash } from "@/components/primitives";
 import { PageArt } from "@/components/PageArt";
@@ -69,7 +72,11 @@ export default function MarketDetail({ params }: { params: Promise<{ pda: string
   const [home, away] = teamsForFixture(market.fixtureId, market.fixtureName);
   const playing = isLivePhase(live?.statusId);
   const settled = market.status === "settled";
-  const labels = [`${home.code} win`, "Draw", `${away.code} win`];
+  // Outcome labels come from the MARKET TYPE, not a hardcoded 1X2 list. An
+  // Over/Under market was rendering "Draw" as its second outcome.
+  const labels = market.outcomes.map((l) =>
+    l === "Home" ? `${home.code} win` : l === "Away" ? `${away.code} win` : l
+  );
 
   return (
     <main className="mx-auto w-full max-w-6xl px-6 pt-12 lg:px-10">
@@ -118,11 +125,14 @@ export default function MarketDetail({ params }: { params: Promise<{ pda: string
         {/* outcomes */}
         <section aria-label="Outcomes">
           <div className="mb-3 flex items-baseline justify-between">
-            <h2 className="label !text-[12px]">Match winner</h2>
+            <h2 className="label !text-[12px]">{market.marketName}</h2>
             <span className="tnum font-mono text-[11px] text-ink-400">
               pool {usdc(market.totalPool)} USDC
             </span>
           </div>
+          {market.isParlay ? (
+            <ParlayGrid market={market} />
+          ) : (
           <div className="space-y-2">
             {labels.map((l, i) => {
               const isWin = settled && market.winningOutcome === i;
@@ -158,6 +168,12 @@ export default function MarketDetail({ params }: { params: Promise<{ pda: string
               );
             })}
           </div>
+          )}
+
+          {/* every other market provable on this fixture */}
+          <Reveal className="mt-6" delay={0.05}>
+            <FixtureMarkets fixtureId={market.fixtureId} currentPda={pda} />
+          </Reveal>
 
           {/* provenance */}
           <Reveal className="mt-6" delay={0.1}>
@@ -176,6 +192,14 @@ export default function MarketDetail({ params }: { params: Promise<{ pda: string
         {/* bet slip */}
         <StaggerItem i={2} base={0.12}>
           <BetSlip market={market} onPlaced={() => void load()} />
+        </StaggerItem>
+
+        {/* what the sharps think, next to what the crowd here thinks */}
+        <StaggerItem i={3} base={0.12}>
+          <SharpVsCrowd
+            marketPda={pda}
+            outcomes={market.outcomes?.map((o: any) => o.label ?? o) ?? []}
+          />
         </StaggerItem>
       </div>
 

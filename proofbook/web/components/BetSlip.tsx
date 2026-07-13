@@ -67,7 +67,12 @@ export function BetSlip({ market, onPlaced }: { market: MarketView; onPlaced?: (
   const [waking, setWaking] = useState(false);
 
   const [home, away] = teamsForFixture(market.fixtureId, market.fixtureName, market.home, market.away);
-  const labels = [`${home.code} win`, "Draw", `${away.code} win`];
+  // The label a bettor SEES must be the outcome the chain will prove. Hardcoding
+  // 1X2 here meant a user staking "Draw" on an Over/Under market was actually
+  // backing "Under 2.5".
+  const labels = market.outcomes.map((l) =>
+    l === "Home" ? `${home.code} win` : l === "Away" ? `${away.code} win` : l
+  );
   const stakeNum = parseFloat(stake) || 0;
   const open = market.status === "open" && market.lockTime * 1000 > Date.now();
 

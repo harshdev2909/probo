@@ -124,4 +124,50 @@ export class TxLineClient {
     const { data } = await this.session.api.get(url);
     return data;
   }
+
+  /**
+   * TxLINE's ODDS feed — a SECOND feed, separate from scores.
+   *
+   * Returns [] when TxLINE publishes no odds for the fixture, which is the
+   * normal case outside a ~1-day window around kickoff (they are purged once the
+   * match finishes). Absent is absent: callers must show nothing, not a guess.
+   */
+  async oddsSnapshot(fixtureId: number): Promise<any[]> {
+    const { data } = await this.session.api.get(`/odds/snapshot/${fixtureId}`);
+    return Array.isArray(data) ? data : [];
+  }
+
+  /**
+   * The v3 proof: the same authentication path, but ONE shared Merkle multiproof
+   * over all the leaves instead of a full sibling path per stat.
+   *
+   * Response differs from v2 in two ways:
+   *   · `statsToProve` is already StatLeaf-shaped — `[{ stat, statProof }]` —
+   *     rather than a bare stat array with a parallel `statProofs`
+   *   · `multiproof: { indices, hashes }` carries the shared siblings, and the
+   *     per-leaf `statProof` arrays come back EMPTY (the multiproof replaces them)
+   *
+   * Measured on a real 4-leg proof (fixture 18218149): v2 needed 22 proof nodes,
+   * v3 needs 11. Half the bytes for the same guarantee.
+   *
+   * HARD LIMIT: at most 5 statKeys. The API rejects a 6th with
+   * "Parameter statKeys must contain between 1 and 5 valid keys".
+   */
+  async statValidationV3(
+    fixtureId: number,
+    seq: number,
+    statKeys: number[]
+  ): Promise<any> {
+    if (statKeys.length < 1 || statKeys.length > 5) {
+      throw new Error(
+        `statValidationV3: ${statKeys.length} stat keys — TxLINE accepts 1..5`
+      );
+    }
+    const url = `/scores/stat-validation-v3?fixtureId=${fixtureId}&seq=${seq}&statKeys=${statKeys.join(
+      ","
+    )}`;
+    this.log.info("fetching v3 multiproof", { url });
+    const { data } = await this.session.api.get(url);
+    return data;
+  }
 }

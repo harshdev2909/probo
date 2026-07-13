@@ -54,6 +54,30 @@ pub enum ProofbookError {
     #[msg("Outcome could not be verified by the oracle; refusing to settle.")]
     OutcomeNotVerified,
 
+    // ── compound (multi-leg) markets ─────────────────────────────────────
+    #[msg("Compound market spec is malformed (leg count, outcome count, or an out-of-range leg index).")]
+    InvalidComboSpec,
+    #[msg("A leg is evaluated more than once by one outcome; TxLINE rejects duplicate stat coverage.")]
+    DuplicateLegCoverage,
+    #[msg("An outcome leaves a leg unevaluated; TxLINE requires every proven stat to be covered.")]
+    IncompleteLegCoverage,
+    #[msg("This ComboSpec does not belong to the market being settled.")]
+    WrongComboSpec,
+    #[msg("Compound markets must be settled with settle_market_v3, not settle_market.")]
+    ComboRequiresV3,
+    #[msg("settle_market_v3 requires a compound market type (>= COMBO_MARKET_TYPE_MIN).")]
+    NotAComboMarket,
+    #[msg("Proof leaf count does not match the ComboSpec's leg count.")]
+    LegCountMismatch,
+    #[msg("Proof leaf does not match the stat (key/period) the ComboSpec pins for that leg.")]
+    LegStatMismatch,
+
+    // ── prop vault ───────────────────────────────────────────────────────
+    #[msg("Provided beneficiary token account is not owned by the vault's beneficiary.")]
+    WrongBeneficiary,
+    #[msg("Provided depositor token account is not owned by the vault's depositor.")]
+    WrongDepositor,
+
     // ── claim_winnings ───────────────────────────────────────────────────
     #[msg("Market is not settled yet.")]
     NotSettled,

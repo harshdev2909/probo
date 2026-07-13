@@ -12,7 +12,91 @@ whole point of the product.
 This repository is the **blockchain layer + the keeper/indexer**: the Anchor
 program, a bundled mock oracle for testing, unit + integration tests, and the
 autonomous `keeper/` service that creates, locks, and settles markets with real
-TxLINE proofs — no human action. No frontend yet.
+TxLINE proofs — no human action.
+
+---
+
+## What is new (validate_stat_v3)
+
+ProofBook now settles on **`validate_stat_v3`**, which replaces v2's per-stat
+sibling paths with **one shared Merkle multiproof** over all the leaves. That is
+what makes multi-leg markets possible.
+
+| legs | v2 proof | v3 proof | v2 tx (limit 1232 B) | v3 tx |
+|---|---|---|---|---|
+| 2 | 12 nodes | 6 nodes | 900 B | 702 B |
+| 4 | 22 nodes | 6 nodes | **1230 B — fits by 2 bytes** | 702 B |
+| 5 (TxLINE's max) | 27 nodes | 6 nodes | **1395 B — does not fit** | 702 B |
+
+Measured on real proofs for fixture 18218149 (`npm run proof:size`), against a real
+702-byte `settle_market_v3` transaction on devnet. v2 grows linearly — a whole new
+sibling path per leg. **v3 is essentially flat**, because the leaves share almost
+all of their internal nodes.
+
+### The provable market catalogue
+
+Twelve market types, all expressible in TxLINE's only provable stat keys
+(1/2 goals, 3/4 yellows, 5/6 reds, 7/8 corners, period-scoped):
+
+`Match Result` · `Total Goals O/U` · `Total Corners O/U` · `Total Cards O/U` ·
+`Both Teams To Score` · `Clean Sheet` · `Half-Time Result` · `Winning Margin` ·
+**four 2×2 parlays**
+
+`npm run catalogue` prints them and demonstrates the build-time gate.
+
+### ⚠️ Three constraints that shape the whole product
+
+All three confirmed **live** against the devnet oracle
+(`keeper/scripts/txline-conformance.ts` reproduces each):
+
+1. **At most 5 stat keys per proof.** The API rejects a 6th outright.
+2. **Every proven stat must be evaluated exactly once** — twice is
+   `DuplicateStatCoverage` (6070), never is `IncompleteStatCoverage` (6071).
+3. **Therefore a parlay's legs must read DISJOINT stats.**
+   *"Home win AND over 2.5 goals" is not expressible* — both legs read goals P1/P2.
+   *"Home win AND over 9.5 corners"* is, because goals and corners are disjoint.
+
+Enforced twice, so an unsettleable market cannot exist: at **build time** in the
+catalogue, and **on-chain at market creation** in `ComboSpec::validate()`.
+
+### Why a parlay is a 2×2 grid
+
+An outcome is an AND of predicates. There is no OR and no negation, so the
+complement of `A ∧ B` — `¬A ∨ ¬B` — cannot be written as an outcome. A two-way
+Hit/Miss parlay is therefore **not exhaustive**: if it misses in the wrong way, no
+outcome is provable and the market can never settle. So a parlay is the full grid —
+`A∧B` (the parlay), `A∧¬B`, `¬A∧B`, `¬A∧¬B` — every cell a pure AND, together
+tiling every possible result.
+
+The same reasoning rules out **Correct Score** (an "any other score" bucket is the
+negation of a disjunction). ProofBook ships **Winning Margin** instead: margin
+buckets tile the integer line and every one is provable.
+
+### Also new
+
+- **`/verify`** — a public verifier that trusts nothing: settlement and predicate
+  from the Solana account, the Merkle root from **TxLINE's own PDA**, the proof from
+  TxLINE, and the verdict from **TxLINE's own program**. Plus a *tamper* control
+  that corrupts a byte and shows the oracle reject it.
+- **Parametric prop vault** — USDC that pays out automatically on a proven compound
+  predicate. Permissionless: the proof decides where the money goes, not the caller.
+- **Sharp vs Crowd** — TxLINE's *demargined* consensus (a second TxLINE feed) next
+  to ProofBook's own pools. Display only; no price ever touches a proof.
+- **[`@proofbook/txline-settle`](packages/txline-settle)** — the settlement core as
+  a reusable package, plus a Rust CPI module for any Anchor program.
+
+### ⚠️ Cancellation is NOT provable — and that is a finding
+
+`GET /fixtures/snapshot` returns a `GameState` field, but the `Fixture` struct that
+`validate_fixture` authenticates has **eleven fields and no status of any kind**.
+`game_state` occurs in exactly one struct in the whole IDL: `Odds`. So that
+`GameState` is **not part of what is hashed into the tree** — settling on it would
+mean trusting TxLINE's API, which is the thing this product exists to refute. And a
+Merkle inclusion proof cannot prove *absence*, so "no stats ⇒ cancelled" is not a
+statement the tree can make.
+
+The time-based permissionless cancel is therefore not a fallback. **It is the only
+sound liveness primitive this interface admits.** See `docs/ONCHAIN_INTERFACE.md` §11.
 
 ---
 

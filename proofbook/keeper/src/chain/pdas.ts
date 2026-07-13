@@ -57,3 +57,16 @@ export function dailyRootsPda(
     oracleProgram
   )[0];
 }
+
+export const COMBO_SEED = Buffer.from("combo");
+
+/** The compound resolution spec sidecar for a market: ["combo", market]. */
+export function comboSpecPda(
+  programId: PublicKey,
+  market: PublicKey
+): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [COMBO_SEED, market.toBuffer()],
+    programId
+  )[0];
+}

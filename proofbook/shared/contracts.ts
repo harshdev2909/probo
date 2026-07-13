@@ -52,6 +52,11 @@ export interface MarketView {
   stage: string;
   kickoffTs: number;
   marketType: number;
+  /** What this market type MEANS, e.g. "Total Goals O/U 2.5". */
+  marketName: string;
+  marketSlug: string;
+  /** True for the 2x2 parlay grids — outcome 0 is "the parlay". */
+  isParlay: boolean;
   status: MarketStatus;
 
   /**
@@ -100,6 +105,12 @@ export interface ReceiptView {
   home: TeamRef;
   away: TeamRef;
   stage: string;
+  /** What this market type MEANS — a corners receipt must not read as a 1X2. */
+  marketType: number;
+  marketName: string;
+  isParlay: boolean;
+  /** The TxLINE stat keys the settling proof carried. */
+  statKeys: number[];
 
   winningOutcome: number;
   outcomeLabel: string;
@@ -214,6 +225,21 @@ export interface FaucetResult {
   sig: string | null;
   /** Set when we deliberately gave nothing (already funded, or rate limited). */
   note: string | null;
+}
+
+/** The headline stat: receipts by market type. Every one is a real proof. */
+export interface ReceiptSummary {
+  total: number;
+  byType: {
+    marketType: number;
+    name: string;
+    slug: string;
+    parlay: boolean;
+    count: number;
+  }[];
+  fixturesCovered: number;
+  /** Fixtures whose result is not provable (retention) — shown, never filled. */
+  gaps: number;
 }
 
 export interface Paginated<T> {

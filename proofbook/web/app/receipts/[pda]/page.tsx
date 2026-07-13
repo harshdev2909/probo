@@ -75,9 +75,15 @@ export default function ReceiptPage({ params }: { params: Promise<{ pda: string 
     homeCode: home.code,
     awayCode: away.code,
     finalScore: { home: score?.p1 ?? 0, away: score?.p2 ?? 0 },
+    // The label comes from the MARKET TYPE via the API — hardcoding 1X2 here
+    // made a corners Over/Under receipt read as a match-winner receipt.
     outcomeLabel:
-      receipt.winningOutcome === 0 ? `${home.code} win` : receipt.winningOutcome === 2 ? `${away.code} win` : "Draw",
-    statKeys: "1, 2",
+      receipt.outcomeLabel === "Home"
+        ? `${home.code} win`
+        : receipt.outcomeLabel === "Away"
+          ? `${away.code} win`
+          : receipt.outcomeLabel,
+    statKeys: receipt.statKeys.join(", "),
     period: receipt.statPeriod ?? 100,
     epochDay: receipt.epochDay,
     dailyRootsPda: receipt.dailyRootsPda,
@@ -94,8 +100,10 @@ export default function ReceiptPage({ params }: { params: Promise<{ pda: string 
         <div>
           <h1 className="display text-[clamp(30px,4.5vw,48px)] text-ink-100">Proof receipt</h1>
           <p className="mt-2 max-w-md text-[13px] leading-relaxed text-ink-400">
-            {home.name} v {away.name} was settled by a Merkle proof verified on-chain. not by
-            anyone&apos;s say-so. This page is the evidence.
+            <span className="text-brass-500">{receipt.marketName}</span>
+            {receipt.isParlay && " — a 2×2 parlay"} on {home.name} v {away.name},
+            settled by a Merkle proof verified on-chain. not by anyone&apos;s
+            say-so. This page is the evidence.
           </p>
         </div>
         <div className="flex gap-2">
@@ -123,10 +131,39 @@ export default function ReceiptPage({ params }: { params: Promise<{ pda: string 
         <Receipt data={data} onVerify={verify} />
       </Reveal>
 
-      <p className="mx-auto mt-8 max-w-[520px] text-center font-mono text-[11px] leading-relaxed text-ink-500">
-        VERIFY reads the market account directly from Solana RPC. not from our indexer. and
-        compares the winning outcome, proof reference, daily root PDA and resolver.
-      </p>
+      {receipt.isParlay && (
+        <p className="mx-auto mt-6 max-w-[560px] border border-dashed border-hairline p-4 text-center font-mono text-[11px] leading-relaxed text-ink-500">
+          Both legs of this parlay — {receipt.statKeys.length} stats — were proven
+          together in ONE validate_stat_v3 merkle multiproof. Proven separately
+          under v2, the same claim needs ~{receipt.statKeys.length * 5 + 2} proof
+          nodes; the multiproof carried it in ~6, because the leaves share their
+          internal nodes. That saving is what makes multi-leg markets fit in a
+          Solana transaction at all.
+        </p>
+      )}
+
+      {/*
+        The button above re-reads the market account from Solana and compares
+        fields — good, but it still takes OUR word for what the proof was. The
+        full verifier re-fetches the proof from TxLINE and asks TxLINE's own
+        program to adjudicate it. That is the one that owes nothing to us.
+      */}
+      <div className="mx-auto mt-10 max-w-[560px] border border-hairline p-5 text-center">
+        <p className="text-[13px] leading-relaxed text-ink-400">
+          The check above compares this receipt against the Solana account. The
+          full verifier goes further: it fetches TxLINE&rsquo;s Merkle root from
+          chain, re-fetches the proof from TxLINE, and asks{" "}
+          <strong className="text-ink-200">TxLINE&rsquo;s own program</strong>{" "}
+          whether it holds — trusting nothing we say.
+        </p>
+        <Link
+          href={`/verify?market=${pda}`}
+          className="label mt-4 inline-block bg-brass-500 px-5 py-2.5 text-ink-950 transition-opacity hover:opacity-90"
+          style={{ borderRadius: "0 0 0 12px" }}
+        >
+          Verify this yourself →
+        </Link>
+      </div>
     </main>
   );
 }

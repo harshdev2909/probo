@@ -22,11 +22,23 @@ const plexMono = IBM_Plex_Mono({
   display: "swap",
 });
 
+/**
+ * `metadataBase` resolves every RELATIVE og:image into an absolute URL. Pinned to
+ * localhost, a shared receipt would advertise an image at http://localhost:3000
+ * — which resolves to nothing on anyone else's machine, so the card renders
+ * blank. Vercel exposes the deployment host as VERCEL_URL; NEXT_PUBLIC_SITE_URL
+ * overrides it for a custom domain.
+ */
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ??
+  "http://localhost:3000";
+
 export const metadata: Metadata = {
   title: "Probo · every payout proven, not trusted",
   description:
     "Bet on the World Cup. Results verified cryptographically, winners paid on the spot, every payout comes with a receipt you can check.",
-  metadataBase: new URL("http://localhost:3000"),
+  metadataBase: new URL(SITE_URL),
   openGraph: {
     title: "Probo",
     description: "Every payout proven, not trusted. World Cup 2026.",

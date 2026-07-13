@@ -34,7 +34,15 @@
     "idl:sync": "cp target/idl/proofbook.json idl/proofbook.json && cp target/idl/mock_oracle.json idl/mock_oracle.json && cp target/idl/proofbook.json web/lib/idl/proofbook.json && echo \"IDL synced to idl/ and web/lib/idl/\"",
     "postinstall": "prisma generate --schema db/prisma/schema.prisma",
     "start:api": "NODE_OPTIONS='--no-experimental-strip-types' ts-node --transpile-only -P keeper/tsconfig.json api/src/index.ts",
-    "start:keeper": "NODE_OPTIONS='--no-experimental-strip-types' ts-node --transpile-only -P keeper/tsconfig.json keeper/src/index.ts live"
+    "start:keeper": "NODE_OPTIONS='--no-experimental-strip-types' ts-node --transpile-only -P keeper/tsconfig.json keeper/src/index.ts live",
+    "preflight": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P keeper/tsconfig.json keeper/scripts/preflight.ts",
+    "catalogue": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P keeper/tsconfig.json keeper/scripts/catalogue.ts",
+    "backfill:catalogue": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P keeper/tsconfig.json keeper/scripts/backfill-catalogue.ts",
+    "verify:receipt": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P keeper/tsconfig.json keeper/scripts/verify-receipt.ts",
+    "sharp": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P keeper/tsconfig.json keeper/scripts/sharp-vs-crowd.ts",
+    "proof:size": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P keeper/tsconfig.json keeper/scripts/proof-size.ts",
+    "sync:now": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P keeper/tsconfig.json keeper/scripts/sync-now.ts",
+    "audit": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P keeper/tsconfig.json keeper/scripts/integrity-audit.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "0.32.1",

@@ -19,6 +19,22 @@ import * as q from "./queries";
 import { EventStream } from "./stream";
 import { Faucet } from "./faucet";
 
+/**
+ * A stateless read server must not die because a pooled connection blinked.
+ *
+ * Node kills the process on any unhandled rejection, and Neon's pooler drops
+ * idle connections routinely — the pool emits the error outside any request
+ * handler, nothing catches it, and the API is dead until someone notices. Every
+ * request here is independent and Prisma reconnects lazily, so the correct
+ * response is to log it and serve the next request.
+ */
+process.on("unhandledRejection", (e: any) => {
+  console.error("[api] unhandled rejection (continuing):", String(e?.message ?? e).slice(0, 200));
+});
+process.on("uncaughtException", (e: any) => {
+  console.error("[api] uncaught exception (continuing):", String(e?.message ?? e).slice(0, 200));
+});
+
 const PORT = Number(process.env.PORT ?? process.env.API_PORT ?? 8787);
 const HOST = process.env.HOST ?? "0.0.0.0";
 const DATABASE_URL = process.env.DATABASE_URL!;
@@ -162,6 +178,12 @@ async function main() {
   });
 
   // ── receipts ──────────────────────────────────────────────────────────────
+  // The headline stat: receipts by market type. One aggregate query, cached.
+  app.get("/receipts/summary", async (_req, reply) => {
+    reply.header("cache-control", "public, max-age=15");
+    return q.getReceiptSummary();
+  });
+
   app.get("/receipts", async (req, reply) => {
     const parsed = ReceiptQuery.safeParse(req.query);
     if (!parsed.success) return badRequest(reply, parsed.error);
@@ -180,6 +202,36 @@ async function main() {
     return r;
   });
 
+  // ── settlement archive ────────────────────────────────────────────────────
+  // A live settlement happens once, at whatever hour the match ends. This
+  // replays it from the same rows the live stream served.
+  app.get("/archive/:fixtureId", async (req, reply) => {
+    const { fixtureId } = z
+      .object({ fixtureId: z.coerce.number().int() })
+      .parse(req.params);
+    const a = await q.getArchive(fixtureId);
+    if (!a) return notFound(reply, "fixture");
+    // Immutable once the fixture has settled; still moving until then.
+    reply.header(
+      "cache-control",
+      a.settledAt ? "public, max-age=300" : "public, max-age=5"
+    );
+    return a;
+  });
+
+  // ── sharp vs crowd ────────────────────────────────────────────────────────
+  // TxLINE's demargined consensus next to ProofBook's own pools, over time.
+  // Display only — no price ever touches a proof, a predicate or a receipt.
+  app.get("/markets/:pda/odds", async (req, reply) => {
+    const { pda } = z
+      .object({ pda: z.string().min(32).max(64) })
+      .parse(req.params);
+    const s = await q.getOddsSeries(pda);
+    if (!s) return notFound(reply, "market");
+    reply.header("cache-control", "public, max-age=15");
+    return s;
+  });
+
   // ── positions ─────────────────────────────────────────────────────────────
   app.get("/positions/:wallet", async (req, reply) => {
     const { wallet } = z
@@ -187,6 +239,30 @@ async function main() {
       .parse(req.params);
     reply.header("cache-control", "no-store"); // a judge's own money — never stale
     return q.listPositions(wallet);
+  });
+
+  // ── the verifier's TxLINE read credential ─────────────────────────────────
+  //
+  // /verify runs entirely in the browser and deliberately reads NOTHING from
+  // this API: the receipt and the predicate come from the Solana account, the
+  // Merkle root comes from TxLINE's own on-chain PDA, and the verdict comes from
+  // TxLINE's own program. The one thing the browser cannot mint for itself is a
+  // TxLINE read token — that requires an on-chain subscription, which the keeper
+  // holds. So we hand out the token, and ONLY the token.
+  //
+  // This does not weaken the verification, and that is the point worth being
+  // precise about: the proof this credential fetches is authenticated against a
+  // root read independently from Solana, and adjudicated by the real txoracle
+  // program. If ProofBook served a forged proof, verification would FAIL — which
+  // is exactly what the "tamper" control on /verify demonstrates.
+  //
+  // The token is a free-tier, read-only, devnet World-Cup scores credential.
+  app.get("/txline/credential", async (_req, reply) => {
+    const cred = await q.getTxlineCredential();
+    if (!cred) return notFound(reply, "TxLINE credential (keeper has not run)");
+    // Short cache: the JWT rotates, and a stale one 401s the browser.
+    reply.header("cache-control", "public, max-age=60");
+    return cred;
   });
 
   // ── tournament surfaces ───────────────────────────────────────────────────

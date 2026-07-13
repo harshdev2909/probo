@@ -5,6 +5,7 @@ import { Chain } from "../chain/proofbook";
 import { TxLineSession } from "../txline/session";
 import { TxLineClient, ScoreUpdate } from "../txline/client";
 import { ScoresStream } from "../txline/sse";
+import { OddsStream } from "../txline/oddsStream";
 import { ReplayFeed, ReplayFixture, loadReplayFixture } from "../txline/replay";
 import { MarketManager } from "./marketManager";
 import { Settler } from "./settler";
@@ -30,6 +31,7 @@ export class Keeper {
   session?: TxLineSession;
   client?: TxLineClient;
   private feed?: ScoresStream | ReplayFeed;
+  private oddsFeed?: OddsStream;
   private replayFixture?: ReplayFixture;
   private timers: NodeJS.Timeout[] = [];
 
@@ -109,12 +111,29 @@ export class Keeper {
       this.leader = new Leader(this.cfg.databaseUrl, async () => {});
       await this.leader.run();
 
-      this.sync = new DbSync(this.cfg, this.chain, this.cfg.instanceId);
+      this.sync = new DbSync(
+        this.cfg,
+        this.chain,
+        this.cfg.instanceId,
+        this.client
+      );
       await this.sync.heartbeat({ streamConnected: false });
       await this.sync.fullSync();
       this.timers.push(setInterval(() => void this.sync!.fullSync(), 10_000));
       this.timers.push(
         setInterval(() => void this.sync!.heartbeat().catch(() => {}), 15_000)
+      );
+      // SHARP vs CROWD. Its own timer: the consensus line drifts independently
+      // of our pools, so sampling it only when someone bets would produce a
+      // sparkline of our own activity rather than of the market's opinion.
+      this.timers.push(
+        setInterval(
+          () =>
+            void this.sync!.syncOdds().catch((e) =>
+              this.log.warn("odds sync failed", { error: e?.message })
+            ),
+          60_000
+        )
       );
     } else {
       // No database: this is the self-contained local/replay demo, so the keeper
@@ -164,8 +183,25 @@ export class Keeper {
 
     const stream = new ScoresStream(this.cfg, this.session!);
     stream.on("update", (u: ScoreUpdate) => this.ingest(u));
+    stream.on("open", () => {
+      void this.sync?.heartbeat({ streamConnected: true }).catch(() => {});
+    });
+    stream.on("closed", () => {
+      void this.sync?.heartbeat({ streamConnected: false }).catch(() => {});
+    });
     stream.start();
     this.feed = stream;
+
+    // SHARP vs CROWD. A second, entirely separate TxLINE feed. It never touches
+    // settlement — no proof, no predicate, no receipt is influenced by a price.
+    const odds = new OddsStream(this.cfg, this.session!);
+    odds.on("odds", (row: any) => {
+      if (!this.cfg.databaseUrl) return;
+      void this.sync?.recordOddsTick(row).catch(() => {});
+    });
+    odds.start();
+    this.oddsFeed = odds;
+
     this.log.info(
       "live pipeline running — markets will lock and settle themselves"
     );
@@ -268,6 +304,7 @@ export class Keeper {
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
     (this.feed as any)?.stop?.();
+    this.oddsFeed?.stop();
     this.api.stop();
     this.store.flush();
     this.log.info("keeper stopped");

@@ -15,12 +15,37 @@
  *
  * A follower does NOT write. It idles and waits. That is deliberate: a
  * "read-only keeper" that still ingested the feed would double-write the store.
+ *
+ * ⚠️ IT MUST NOT GO THROUGH A CONNECTION POOLER.
+ *
+ * A session-level advisory lock is tied to a backend SESSION. PgBouncer (which
+ * Neon puts in front of Postgres on its `-pooler` host) multiplexes many clients
+ * onto few backends, so the "session" a client thinks it holds is not its own:
+ * two keepers can BOTH be told they acquired the lock, and the one guarantee this
+ * whole mechanism exists to provide silently evaporates. Observed exactly that —
+ * `pg_locks` showed the advisory lock held by `application_name = pgbouncer`
+ * while two keepers each believed they were the leader.
+ *
+ * So the lock takes a DIRECT connection. `DIRECT_DATABASE_URL` if set; otherwise
+ * `DATABASE_URL` with Neon's `-pooler` suffix stripped, which is exactly the
+ * direct endpoint. Prisma keeps using the pooled URL for everything else — the
+ * pooler is right for ordinary queries and wrong only for this.
  */
 import { Client } from "pg";
 import { Logger } from "./logger";
 
 /** Any stable 64-bit key; this one is just "proofbook" hashed by hand. */
 const LOCK_KEY = 0x50524f4f_46424f4bn % 9223372036854775807n;
+
+/**
+ * A connection that is genuinely OURS — not one borrowed from a pooler.
+ * Neon's pooled host is `<endpoint>-pooler.<region>...`; the direct host is the
+ * same name with `-pooler` removed.
+ */
+export function directUrl(url: string): string {
+  if (process.env.DIRECT_DATABASE_URL) return process.env.DIRECT_DATABASE_URL;
+  return url.replace("-pooler.", ".");
+}
 
 export class Leader {
   private client?: Client;
@@ -31,9 +56,13 @@ export class Leader {
   private resolveAcquired?: () => void;
 
   constructor(
-    private databaseUrl: string,
+    databaseUrl: string,
     private onAcquire: () => Promise<void> | void
-  ) {}
+  ) {
+    this.databaseUrl = directUrl(databaseUrl);
+  }
+
+  private databaseUrl: string;
 
   get isLeader() {
     return this.acquired;
@@ -78,6 +107,7 @@ export class Leader {
       if (res.rows[0]?.locked) {
         this.acquired = true;
         this.log.info("acquired the keeper lock — this instance is the leader");
+        this.startVerifyLoop();
         await this.onAcquire();
         this.resolveAcquired?.();
         this.resolveAcquired = undefined;
@@ -104,10 +134,54 @@ export class Leader {
   }
 
   /**
+   * PROVE we still hold the lock, every few seconds — the fix for a failure that
+   * actually happened on the eve of the semi-finals.
+   *
+   * A session-level advisory lock lives exactly as long as its SESSION, and the
+   * client only learns the session died if the socket says so. It did not:
+   * Neon idle-reaped the connection half-open, no 'error' or 'end' ever fired,
+   * the lock silently evaporated server-side — and `pg_locks` showed NO holder
+   * while two keepers both heartbeated isLeader=true. Trust-once leadership is
+   * not leadership on this infrastructure.
+   *
+   * So the leader re-asserts the lock on ITS OWN session every tick.
+   * `pg_try_advisory_lock` on a session that already holds the lock stacks and
+   * returns true, so in the healthy case this is a no-op that doubles as the
+   * keepalive that stops Neon reaping the session in the first place. If the
+   * connection is dead the query THROWS, and we stand down within one tick
+   * instead of never.
+   */
+  private startVerifyLoop() {
+    const tick = async () => {
+      if (!this.acquired || this.stopped) return;
+      try {
+        const res = await this.client!.query<{ locked: boolean }>(
+          "SELECT pg_try_advisory_lock($1) AS locked",
+          [LOCK_KEY.toString()]
+        );
+        if (!res.rows[0]?.locked) {
+          this.log.error("lock verify returned false — session no longer owns it");
+          this.standDown();
+          return;
+        }
+      } catch (e) {
+        this.log.error("lock verify failed — the session is gone", {
+          error: String(e).slice(0, 160),
+        });
+        this.standDown();
+        return;
+      }
+      setTimeout(() => void tick(), 15_000);
+    };
+    setTimeout(() => void tick(), 15_000);
+  }
+
+  /**
    * If we lose the connection we have also lost the lock (Postgres releases it),
    * so we must stop acting immediately. Exiting is the safest thing a keeper that
    * is no longer certain it is the leader can do — the platform restarts it and
-   * it re-elects cleanly.
+   * it re-elects cleanly. (Locally, `scripts/keeper-supervisor.sh` is that
+   * platform: it relaunches the process so it re-elects.)
    */
   private standDown() {
     if (!this.acquired || this.stopped) return;

@@ -34,7 +34,28 @@ until curl -s "$RPC" -X POST -H 'Content-Type: application/json' \
 done
 echo "Validator ready. Running the keeper E2E (autonomous lifecycle)..."
 
+# This suite is a SELF-CONTAINED local run: JSON store, local validator, mock
+# oracle. `keeper/.env` exists to point a plain `npm run keeper:live` at the
+# seeded DEVNET tournament, and every one of its vars is poison here:
+#
+#   RPC_URL        config prefers it over ANCHOR_PROVIDER_URL, so the keeper
+#                  would act on DEVNET while the test mints on localhost — and
+#                  the devnet market for the replay fixture is already settled,
+#                  so the very first assertion sees 'settled', not 'open'.
+#   DATABASE_URL   boots the keeper in Postgres mode, where it blocks on the
+#                  leader lock the DEPLOYED keeper holds, and stands by as a
+#                  follower forever instead of running.
+#   KEEPER_DATA_DIR  loads the 400-market devnet store instead of a temp one.
+#   MARKET_TYPE(S)   pins the live generation.
+#
+# So pin them, rather than inheriting them. Without this the E2E only passes on
+# a machine that has never run the keeper against devnet.
+DATABASE_URL= \
+RPC_URL="$RPC" \
+KEEPER_DATA_DIR= \
+MARKET_TYPE=0 \
+MARKET_TYPES=0 \
 ANCHOR_PROVIDER_URL="$RPC" \
 ANCHOR_WALLET="${ANCHOR_WALLET:-$HOME/.config/solana/id.json}" \
 NODE_OPTIONS='--no-experimental-strip-types' \
-  yarn run ts-mocha -p keeper/tsconfig.json -t 300000 keeper/test/e2e.test.ts
+  npx ts-mocha -p keeper/tsconfig.json -t 300000 keeper/test/e2e.test.ts
