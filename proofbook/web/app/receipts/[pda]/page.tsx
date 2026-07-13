@@ -101,7 +101,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ pda: string 
           <h1 className="display text-[clamp(30px,4.5vw,48px)] text-ink-100">Proof receipt</h1>
           <p className="mt-2 max-w-md text-[13px] leading-relaxed text-ink-400">
             <span className="text-brass-500">{receipt.marketName}</span>
-            {receipt.isParlay && " — a 2×2 parlay"} on {home.name} v {away.name},
+            {receipt.isParlay && ", a 2×2 parlay,"} on {home.name} v {away.name},
             settled by a Merkle proof verified on-chain. not by anyone&apos;s
             say-so. This page is the evidence.
           </p>
@@ -133,8 +133,8 @@ export default function ReceiptPage({ params }: { params: Promise<{ pda: string 
 
       {receipt.isParlay && (
         <p className="mx-auto mt-6 max-w-[560px] border border-dashed border-hairline p-4 text-center font-mono text-[11px] leading-relaxed text-ink-500">
-          Both legs of this parlay — {receipt.statKeys.length} stats — were proven
-          together in ONE validate_stat_v3 merkle multiproof. Proven separately
+          Both legs of this parlay, {receipt.statKeys.length} stats in all, were
+          proven together in ONE validate_stat_v3 merkle multiproof. Proven separately
           under v2, the same claim needs ~{receipt.statKeys.length * 5 + 2} proof
           nodes; the multiproof carried it in ~6, because the leaves share their
           internal nodes. That saving is what makes multi-leg markets fit in a
@@ -154,7 +154,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ pda: string 
           full verifier goes further: it fetches TxLINE&rsquo;s Merkle root from
           chain, re-fetches the proof from TxLINE, and asks{" "}
           <strong className="text-ink-200">TxLINE&rsquo;s own program</strong>{" "}
-          whether it holds — trusting nothing we say.
+          whether it holds. It trusts nothing we say.
         </p>
         <Link
           href={`/verify?market=${pda}`}

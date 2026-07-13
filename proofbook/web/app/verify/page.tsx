@@ -181,7 +181,7 @@ function VerifyInner() {
           <div className="mt-6 border border-dashed border-[--color-hairline-strong] p-5">
             <p className="label text-ink-500">Still not convinced?</p>
             <p className="mt-2 text-sm text-ink-400">
-              ProofBook handed your browser a TxLINE read token — a key, not an
+              ProofBook handed your browser a TxLINE read token: a key, not an
               answer. If we could use that to lie, this page would be theatre. So
               corrupt the proof and watch what happens.
             </p>

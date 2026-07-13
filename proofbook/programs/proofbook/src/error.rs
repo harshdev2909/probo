@@ -77,6 +77,8 @@ pub enum ProofbookError {
     WrongBeneficiary,
     #[msg("Provided depositor token account is not owned by the vault's depositor.")]
     WrongDepositor,
+    #[msg("Beneficiary must differ from the depositor: settlement passes both token accounts as distinct writable accounts, so a self-hedge vault could never settle — only time out into a refund.")]
+    SelfHedgeVault,
 
     // ── claim_winnings ───────────────────────────────────────────────────
     #[msg("Market is not settled yet.")]

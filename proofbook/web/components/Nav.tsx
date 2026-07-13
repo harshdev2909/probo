@@ -20,6 +20,7 @@ const LINKS = [
   ["/portfolio", "Portfolio"],
   ["/keeper", "Keeper"],
   ["/status", "Status"],
+  ["/vault", "Vault"],
   ["/docs", "Docs"],
 ] as const;
 

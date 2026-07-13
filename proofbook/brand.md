@@ -14,5 +14,7 @@ _Status: defined (authored from the product brief; see `DESIGN.md` for the full 
 - **Motion:** settle/carry/snap cubic-beziers, 120/240/420/700ms, no bounce.
 - **Voice:** confident, declarative, dry. "Proven, not trusted."
 
-Tokens live in `web/app/globals.css`. The living styleguide is the `/styleguide`
-route in `web/`. Treat both as the source of truth for any UI work in this repo.
+Tokens live in `web/app/globals.css`; the full system is documented in
+`DESIGN.md`. Treat both as the source of truth for any UI work in this repo.
+(The `/styleguide` route was retired from the shipped site; recover it from git
+history if it is ever needed again.)

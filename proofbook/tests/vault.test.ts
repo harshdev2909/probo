@@ -281,6 +281,44 @@ describe("parametric prop vault — payout on a proven predicate", () => {
     assert.equal(Object.keys(v.status)[0], "funded");
   });
 
+  it("refuses a SELF-HEDGE vault (beneficiary == depositor) at creation", async () => {
+    // Found live: settle passes beneficiary_token and depositor_token as two
+    // writable accounts, and the runtime rejects the duplicate (2040) when they
+    // are the same wallet — so a self-hedge vault could never settle, only time
+    // out into a refund. The program now refuses to create one.
+    const vaultId = nextId++;
+    const { pv, vault } = vaultPdas(vaultId, depositor.publicKey);
+    const lockTime = (await onchainNow(connection)) + 60;
+    try {
+      await program.methods
+        .initializePropVault(
+          new BN(vaultId),
+          [P1_CORNERS, P2_CORNERS],
+          [binary(0, 1, ADD, GT, 10)],
+          new BN(950_001),
+          USDC(100),
+          depositor.publicKey, // beneficiary == depositor
+          new BN(lockTime),
+          new BN(3600)
+        )
+        .accounts({
+          depositor: depositor.publicKey,
+          propVault: pv,
+          usdcMint,
+          vault,
+          depositorToken: depositorAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .signers([depositor])
+        .rpc();
+      assert.fail("a self-hedge vault must be refused at creation");
+    } catch (e: any) {
+      assert.include(JSON.stringify(e), "SelfHedgeVault");
+    }
+  });
+
   it("rejects a vault whose predicate leaves a leg unevaluated (TxLINE 6071)", async () => {
     const vaultId = nextId++;
     const { pv, vault } = vaultPdas(vaultId, depositor.publicKey);

@@ -112,8 +112,8 @@ export default function Bracket() {
       <header className="mb-10">
         <h1 className="display text-[clamp(34px,5vw,54px)] text-ink-100">Bracket</h1>
         <p className="mt-2 max-w-xl text-[13px] text-ink-400">
-          The road to the final. Every scoreline below was proven on-chain — tap a tie
-          to see the proof that settled it.
+          The road to the final. Every scoreline below was proven on-chain. Tap a
+          tie to see the proof that settled it.
         </p>
       </header>
 

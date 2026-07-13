@@ -50,12 +50,12 @@ function H2({ children }: { children: React.ReactNode }) {
 }
 
 const FLOW = [
-  ["1", "Market created", "The predicate — which stats, which comparison, which threshold — is fixed on-chain at creation. Nobody can change the question later."],
+  ["1", "Market created", "The predicate is fixed on-chain at creation: which stats, which comparison, which threshold. Nobody can change the question later."],
   ["2", "Bets escrowed", "USDC sits in a PDA vault. Parimutuel pools, no counterparty."],
   ["3", "Match finalises", "TxLINE publishes a merkle root of every match stat to their own Solana program, daily."],
   ["4", "Keeper submits the proof", "Anyone may. The proof carries values + merkle paths; the market supplies the question. settle_market CPIs TxLINE's validate_stat_v3."],
-  ["5", "The oracle adjudicates", "TxLINE's program — not ours — checks the multiproof against the root TxLINE published, evaluates the predicate, and returns true or the transaction fails."],
-  ["6", "Receipt", "The settlement writes the proof ref, root PDA, resolver and timestamp into the account. That record is what this site renders — and what you can re-verify below."],
+  ["5", "The oracle adjudicates", "TxLINE's program, not ours, checks the multiproof against the root TxLINE published, evaluates the predicate, and returns true or the transaction fails."],
+  ["6", "Receipt", "The settlement writes the proof ref, root PDA, resolver and timestamp into the account. That record is what this site renders, and what you can re-verify below."],
 ] as const;
 
 export default function Docs() {
@@ -75,7 +75,7 @@ export default function Docs() {
       {/* the hero: verify from your terminal */}
       <Reveal>
         <section className="panel border border-brass-600/50 p-6">
-          <p className="label text-brass-500">Verify it yourself — one command</p>
+          <p className="label text-brass-500">Verify it yourself in one command</p>
           <p className="mb-4 mt-2 text-[13px] leading-relaxed text-ink-300">
             Pick any receipt on this site, copy its market address, and run:
           </p>
@@ -108,15 +108,15 @@ export default function Docs() {
       </ol>
       <p className="mt-3 font-mono text-[11px] text-ink-600">
         market&nbsp;(question, fixed) + proof&nbsp;(values, merkle paths) →
-        validate_stat_v3 → true | fail — there is no admin path.
+        validate_stat_v3 → true | fail. there is no admin path.
       </p>
 
       {/* SDK quickstart */}
-      <H2>SDK — @h4rsharma/txline-settle</H2>
+      <H2>SDK · @h4rsharma/txline-settle</H2>
       <p className="mb-3 text-[13px] leading-relaxed text-ink-400">
         The settlement core of this site, published as a library. Unofficial,
         community-built; not affiliated with TxODDS/TxLINE. It is the same code
-        the keeper runs — the app imports the package.
+        the keeper runs. The app imports the package.
       </p>
       <Cmd>npm i @h4rsharma/txline-settle</Cmd>
       <pre className="mt-3 overflow-x-auto border border-hairline bg-ink-950 p-4 font-mono text-[12px] leading-relaxed text-ink-300">
@@ -124,7 +124,7 @@ export default function Docs() {
          TxLineSession, findFinalisedSeq, fetchProofV3,
          toPayloadV3, dailyRootsPda } from "@h4rsharma/txline-settle";
 
-// "Home win AND over 9.5 corners" — an exhaustive 2×2 grid.
+// "Home win AND over 9.5 corners" as an exhaustive 2×2 grid.
 // Overlapping stat families throw at build time (TxLINE 6070).
 const market   = parlay(homeWin, overCorners(9.5));   // legs [1,2,7,8]
 const seq      = await findFinalisedSeq(session, fixtureId);
@@ -155,7 +155,7 @@ await myProgram.methods.settle(0, payload).accounts({
         <div className="border border-hairline p-3.5">
           <p className="font-mono text-[11px] uppercase tracking-[0.1em] text-ink-500">for Rust programs</p>
           <p className="mt-1.5">
-            The package ships <code className="font-mono text-ink-300">rust/txline_cpi.rs</code> —
+            The package ships <code className="font-mono text-ink-300">rust/txline_cpi.rs</code>:
             wire types byte-identical to txoracle v1.5.6 plus{" "}
             <code className="font-mono text-ink-300">invoke_validate_stat_v3</code>, so any Anchor
             program can settle from a TxLINE proof. One rule: take the VALUES from
@@ -177,7 +177,7 @@ await myProgram.methods.settle(0, payload).accounts({
         {[
           {
             cmd: "auth",
-            desc: "Authenticate with TxLINE: guest JWT → FREE on-chain World-Cup subscription (Token-2022, price 0) → activate. Caches the session at ~/.txline-settle/ — read credentials, not funds. Needs a funded devnet keypair to sign the subscribe transaction.",
+            desc: "Authenticate with TxLINE: guest JWT → FREE on-chain World-Cup subscription (Token-2022, price 0) → activate. Caches the session at ~/.txline-settle/ (read credentials, not funds). Needs a funded devnet keypair to sign the subscribe transaction.",
             ex: "npx @h4rsharma/txline-settle auth --keypair ~/.config/solana/id.json",
           },
           {
@@ -192,12 +192,12 @@ await myProgram.methods.settle(0, payload).accounts({
           },
           {
             cmd: "proof <fixtureId> --stats 1,2",
-            desc: "Fetch a real stat-validation-v3 merkle multiproof. --stats is the leg list in key order (max 5 — the API rejects a 6th); --seq pins a record, otherwise the finalised one is used.",
+            desc: "Fetch a real stat-validation-v3 merkle multiproof. --stats is the leg list in key order (max 5; the API rejects a 6th); --seq pins a record, otherwise the finalised one is used.",
             ex: "npx @h4rsharma/txline-settle proof 18218149 --stats 1,2,7,8",
           },
           {
             cmd: "predicate",
-            desc: "Build the exhaustive 2×2 parlay grid from two conditions — or check leg-set compatibility with --check. Overlapping stat families are refused with the DuplicateStatCoverage (6070) explanation, because the oracle would refuse them too.",
+            desc: "Build the exhaustive 2×2 parlay grid from two conditions, or check leg-set compatibility with --check. Overlapping stat families are refused with the DuplicateStatCoverage (6070) explanation, because the oracle would refuse them too.",
             ex: "npx @h4rsharma/txline-settle predicate --a homeWin --b overCorners:9.5",
             ex2: 'npx @h4rsharma/txline-settle predicate --check "1,2+7,8"',
           },
@@ -209,18 +209,18 @@ await myProgram.methods.settle(0, payload).accounts({
           },
           {
             cmd: "market create",
-            desc: "Create a 1X2 market on a fixture (the reference market shape). --period matters: pin the period the fixture's proof actually carries — 100 only survives ~10 days, older fixtures prove at 5.",
+            desc: "Create a 1X2 market on a fixture (the reference market shape). --period matters. Pin the period the fixture's proof actually carries: 100 only survives ~10 days, older fixtures prove at 5.",
             ex: "npx @h4rsharma/txline-settle market create --fixture 18237038 --mint <usdcMint> --lock 1784055600 --period 100",
           },
           {
             cmd: "market bet / lock / settle / claim",
-            desc: "The rest of the lifecycle. settle fetches the real proof, derives the outcome the proven values satisfy, and submits the oracle CPI — the same trustless path the keeper takes. claim pays a winning position.",
+            desc: "The rest of the lifecycle. settle fetches the real proof, derives the outcome the proven values satisfy, and submits the oracle CPI, the same trustless path the keeper takes. claim pays a winning position.",
             ex: "npx @h4rsharma/txline-settle market bet --market <pda> --outcome 0 --amount 25",
             ex2: "npx @h4rsharma/txline-settle market settle --market <pda>",
           },
           {
             cmd: "market receipt",
-            desc: "Reconstruct a settlement receipt purely from chain accounts — proof ref, epoch day, roots PDA, resolver, pools. No API, no database.",
+            desc: "Reconstruct a settlement receipt purely from chain accounts: proof ref, epoch day, roots PDA, resolver, pools. No API, no database.",
             ex: "npx @h4rsharma/txline-settle market receipt --market <pda> --json",
           },
         ].map((c) => (
@@ -248,14 +248,14 @@ await myProgram.methods.settle(0, payload).accounts({
           <p className="mt-1.5">
             The oracle evaluates each proven stat <b className="text-ink-200">exactly once</b>{" "}
             (errors 6070/6071, confirmed live). &ldquo;Home win AND over 2.5
-            goals&rdquo; is therefore <b className="text-ink-200">not expressible</b> — both
+            goals&rdquo; is therefore <b className="text-ink-200">not expressible</b>, because both
             legs read goals. Families: goals&nbsp;1|2 · yellows&nbsp;3|4 ·
             reds&nbsp;5|6 · corners&nbsp;7|8. The SDK and the on-chain program
             both refuse an overlapping combo before it can become a market.
           </p>
         </div>
         <div className="border border-hairline p-4">
-          <p className="text-ink-100">period 100 vs period 5 — the retention trap</p>
+          <p className="text-ink-100">period 100 vs period 5: the retention trap</p>
           <p className="mt-1.5">
             TxLINE keeps the <code className="font-mono">game_finalised</code> (period&nbsp;100)
             record only ~10 days; older fixtures prove at period&nbsp;5 (full
@@ -269,13 +269,13 @@ await myProgram.methods.settle(0, payload).accounts({
           <p className="text-ink-100">The zero-stake cancel</p>
           <p className="mt-1.5">
             If the proven outcome has an empty pool, settlement routes to
-            Cancelled (refunds, no fee) — correct, but the market never earns a
+            Cancelled (refunds, no fee). Correct, but the market never earns a
             receipt. It once silently voided 74 markets. Stake every outcome
             before lock, atomically.
           </p>
         </div>
         <div className="border border-hairline p-4">
-          <p className="text-ink-100">Cancellation is not provable — by design of the tree</p>
+          <p className="text-ink-100">Cancellation is not provable, by design of the tree</p>
           <p className="mt-1.5">
             The fixture leaf TxLINE commits to has no status field, and a merkle
             inclusion proof cannot prove <i>absence</i>. The time-based

@@ -37,9 +37,9 @@ function betError(e: unknown): string {
   if (/BettingClosed/.test(raw)) return "Betting has closed on this match.";
   if (/OutcomeMismatch|InvalidOutcome/.test(raw)) return "That outcome is not valid for this market.";
   if (/insufficient funds|InsufficientFunds|0x1$/.test(raw))
-    return "Not enough test USDC — top up above.";
+    return "Not enough test USDC. Top up above.";
   if (/AccountNotInitialized|could not find account/i.test(raw))
-    return "No token account yet — tap “Get test USDC” above.";
+    return "No token account yet. Tap “Get test USDC” above.";
   if (/already in use|AccountAlreadyInitialized/i.test(raw))
     return "You already have a position on this market. One bet per wallet per market.";
   if (/Blockhash expired/i.test(raw)) return "Took too long to sign. Try again.";

@@ -6,7 +6,7 @@ import { SolanaProviders } from "@/lib/wallet";
 import { Nav } from "@/components/Nav";
 import { Onboarding } from "@/components/Onboarding";
 import { BallCursor } from "@/components/Cursor";
-import { Mark } from "@/components/Mark";
+import { Footer } from "@/components/Footer";
 
 const archivo = Archivo({
   subsets: ["latin"],
@@ -58,16 +58,7 @@ export default function RootLayout({
             <Nav />
             <Onboarding />
             <div className="flex-1">{children}</div>
-            <footer className="rule mt-24">
-              <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-8 lg:px-10">
-                <span className="flex items-center gap-2.5 text-[12px] text-ink-500">
-                  <Mark size={16} /> Probo
-                </span>
-                <span className="label !text-[10px] flex items-center gap-2 text-ink-400">
-                  Powered by <span className="display-condensed text-[13px] tracking-[0.06em] text-ink-200">TxLINE</span>
-                </span>
-              </div>
-            </footer>
+            <Footer />
             <BallCursor />
           </StreamProvider>
         </SolanaProviders>

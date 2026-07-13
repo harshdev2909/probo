@@ -117,7 +117,7 @@ export function SharpVsCrowd({
 
           <p className="mt-4 border-t border-hairline pt-3 text-[11px] leading-relaxed text-ink-600">
             <span className="text-ink-400">Sharp</span> is TxLINE&rsquo;s
-            demargined consensus — the overround is stripped out, so it is a real
+            demargined consensus: the overround is stripped out, so it is a real
             probability, not a price.{" "}
             <span className="text-ink-400">Crowd</span> is this market&rsquo;s own
             pools. <span className="text-ink-400">Edge</span> is the gap. Display

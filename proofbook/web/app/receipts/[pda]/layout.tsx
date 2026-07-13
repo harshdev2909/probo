@@ -32,10 +32,10 @@ export async function generateMetadata({
         : null;
 
     const title = score
-      ? `${home} ${score} ${away} — proven, not trusted`
-      : `${home} v ${away} — Proof Receipt`;
+      ? `${home} ${score} ${away} · proven, not trusted`
+      : `${home} v ${away} · Proof Receipt`;
     const description = score
-      ? `Settled ${r.outcomeLabel} on a real TxLINE merkle proof, verified on-chain. Don't take our word for it — check it yourself.`
+      ? `Settled ${r.outcomeLabel} on a real TxLINE merkle proof, verified on-chain. Don't take our word for it. Check it yourself.`
       : `A ProofBook settlement, verifiable against TxLINE's on-chain merkle root.`;
 
     return {

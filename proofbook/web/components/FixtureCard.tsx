@@ -81,7 +81,7 @@ export function FixtureCard({
       <Link
         href={`/m/${market.marketPda}`}
         className="grid grid-cols-[1fr_auto] gap-x-5 focus-visible:outline-2"
-        aria-label={`${home.name} versus ${away.name} — ${market.marketName}`}
+        aria-label={`${home.name} versus ${away.name}, ${market.marketName}`}
       >
         <div className="min-w-0 space-y-2.5">
           <TeamRow

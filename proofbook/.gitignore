@@ -13,3 +13,4 @@ backups
 .env
 db/generated
 web/.env.local
+scripts/api.env

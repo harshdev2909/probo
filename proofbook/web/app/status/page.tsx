@@ -100,7 +100,7 @@ export default function Status() {
     return (
       <main className="mx-auto w-full max-w-3xl px-6 pt-16 lg:px-10">
         <div className="panel">
-          <ErrorState title={`API unreachable — ${err}`} retry={() => void load()} />
+          <ErrorState title={`API unreachable: ${err}`} retry={() => void load()} />
         </div>
       </main>
     );
@@ -125,8 +125,8 @@ export default function Status() {
       <header className="mb-8">
         <h1 className="display text-[clamp(30px,4vw,44px)] text-ink-100">Status</h1>
         <p className="mt-2 text-[13px] text-ink-400">
-          Nobody clicks resolve. The keeper does it, so it has to be alive — this page
-          says whether it is.
+          Nobody clicks resolve. The keeper does it, so it has to be alive. This
+          page says whether it is.
         </p>
       </header>
 
@@ -149,7 +149,7 @@ export default function Status() {
             value={hb === null ? "never" : `${hb}s ago`}
             ok={keeperOk}
             warn={hb !== null && hb > 45 && hb <= 90}
-            hint="Considered dead after 90 seconds."
+            hint="Marked offline after 90 seconds without a heartbeat."
           />
           <Row
             label="Score feed connected"
@@ -192,7 +192,7 @@ export default function Status() {
         <Row
           label="Honest gaps"
           value={String(health.counts.gaps)}
-          hint="Played, but outside TxLINE's retention window — so no proof, and no scoreline. We do not invent either."
+          hint="Played, but outside TxLINE's retention window: no proof, and no scoreline. We do not invent either."
         />
       </section>
 
@@ -227,7 +227,7 @@ export default function Status() {
           }
           ok={keeper.faucet.enabled && !faucetLow}
           warn={faucetLow}
-          hint={faucetLow ? "Running low — judges may not be able to get test funds." : undefined}
+          hint={faucetLow ? "Reserves below target. Auto-topped from the treasury." : undefined}
         />
         <Row label="API version" value={health.version} ok />
       </section>

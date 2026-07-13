@@ -92,7 +92,7 @@ export function Onboarding() {
     {
       n: 1,
       title: "Connect a wallet",
-      body: "Phantom or Solflare. Devnet — no real money anywhere near this.",
+      body: "Phantom or Solflare. Devnet, so no real money anywhere near this.",
       state: wallet.connected ? "done" : "active",
       action: wallet.connected ? undefined : (
         <button onClick={() => setVisible(true)} className="ob-btn">

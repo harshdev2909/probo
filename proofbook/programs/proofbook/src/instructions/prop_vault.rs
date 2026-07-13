@@ -81,6 +81,15 @@ pub fn initialize_handler(
 ) -> Result<()> {
     require!(amount > 0, ProofbookError::ZeroAmount);
     require!(fixture_id > 0, ProofbookError::InvalidFixtureId);
+    // A vault whose beneficiary IS the depositor can never settle: the settle
+    // instruction takes beneficiary_token and depositor_token as two writable
+    // accounts, and the runtime rejects the same account twice (found live —
+    // ConstraintDuplicateMutableAccount, 2040). It could only ever time out into
+    // a refund. Refuse to create what cannot settle.
+    require!(
+        beneficiary != ctx.accounts.depositor.key(),
+        ProofbookError::SelfHedgeVault
+    );
     require!(
         resolution_timeout > 0,
         ProofbookError::InvalidResolutionTimeout

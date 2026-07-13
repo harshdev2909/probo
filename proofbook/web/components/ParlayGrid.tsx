@@ -131,7 +131,7 @@ export function ParlayGrid({
       {/* the finding, as product copy */}
       <details className="mt-4 border border-dashed border-hairline p-3">
         <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.1em] text-ink-500">
-          Why these two legs — and why not &ldquo;win &amp; over 2.5 goals&rdquo;?
+          Why these two legs, and why not &ldquo;win &amp; over 2.5 goals&rdquo;?
         </summary>
         <div className="mt-3 space-y-2 text-[12px] leading-relaxed text-ink-400">
           <p>
@@ -147,12 +147,12 @@ export function ParlayGrid({
             cards&nbsp;&#123;3,4&#125;
           </p>
           <p>
-            &ldquo;Home win <em>and</em> over 2.5 goals&rdquo; is not expressible
-            — both legs read the goals stats, and the oracle rejects the double
+            &ldquo;Home win <em>and</em> over 2.5 goals&rdquo; is not expressible:
+            both legs read the goals stats, and the oracle rejects the double
             read (error 6070). &ldquo;Home win <em>and</em> over 9.5
             corners&rdquo; works, because goals and corners are different leaves
             of the tree. This is a property of the proof system, not a product
-            choice — and the market you are looking at is shaped by it.
+            choice, and the market you are looking at is shaped by it.
           </p>
         </div>
       </details>

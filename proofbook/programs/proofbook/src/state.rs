@@ -314,7 +314,9 @@ pub enum VaultStatus {
 #[derive(InitSpace)]
 pub struct PropVault {
     pub depositor: Pubkey,
-    /// Paid iff the predicate holds. May be the depositor (a self-hedge).
+    /// Paid iff the predicate holds. Enforced /= depositor at creation: settlement
+    /// passes both token accounts as writable, and the runtime rejects the same
+    /// account twice — a self-hedge vault could never settle, only time out.
     pub beneficiary: Pubkey,
     /// Distinguishes several vaults from the same depositor (PDA seed).
     pub vault_id: u64,

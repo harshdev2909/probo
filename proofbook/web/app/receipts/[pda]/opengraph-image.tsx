@@ -12,7 +12,7 @@
  */
 import { ImageResponse } from "next/og";
 
-export const alt = "ProofBook — a settlement proven, not trusted";
+export const alt = "ProofBook · a settlement proven, not trusted";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
