@@ -131,7 +131,7 @@ npm run test:all   # Rust unit + Anchor program + SDK. No network, no devnet.
 | suite | what it proves | command |
 | --- | --- | --- |
 | **Rust** (10) | parimutuel solvency, rounding, fee bounds, the zero winning pool trap | `npm run test:rust` |
-| **Anchor** (20) | parlays, the prop vault, tampered proofs, duplicate and incomplete stat coverage | `anchor test` |
+| **Anchor** (20) | parlays, the prop vault, tampered proofs, duplicate and incomplete stat coverage | `npm run test:anchor` |
 | **SDK** (8) | predicate coverage, disjoint stat families, the proof payload shape | `npm run test:sdk` |
 | **API** (45) | the contract, pagination, and the honesty invariants at the wire | `npm run test:api` |
 | **keeper e2e** | watch, prove, settle, claim, against a local validator | `npm run keeper:e2e` |

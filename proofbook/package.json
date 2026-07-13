@@ -46,8 +46,9 @@
     "audit": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P keeper/tsconfig.json keeper/scripts/integrity-audit.ts",
     "sdk:build": "npm run build -w @h4rsharma/txline-settle",
     "test:sdk": "npm test -w @h4rsharma/txline-settle",
-    "test:all": "npm run test:sdk && anchor test && npm run test:rust",
-    "test:rust": "cargo test --manifest-path programs/proofbook/Cargo.toml"
+    "test:all": "npm run test:rust && npm run test:sdk && npm run test:anchor",
+    "test:rust": "cargo test --manifest-path programs/proofbook/Cargo.toml",
+    "test:anchor": "anchor build && ./scripts/localnet.sh && npm test"
   },
   "dependencies": {
     "@coral-xyz/anchor": "0.32.1",

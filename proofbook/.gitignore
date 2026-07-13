@@ -26,3 +26,6 @@ dist
 # logs and local dumps
 *.log
 npm-debug.log*
+
+# local validator ledger (npm run test:anchor)
+.test-ledger

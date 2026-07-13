@@ -9,7 +9,10 @@ cd "$(dirname "$0")/.."
 
 PROOFBOOK=4kyf719yvcKf3qHKyLAQHbBEgLogrbJtC2nFZMMd7v63
 MOCK=F7QqiHeEEDenTEY8fu55rrYTmFrX4K9KKe3hbcdgrZ7u
-LEDGER="${PB_LEDGER:-/Volumes/Extreme SSD/.pb-ledger/ledger}"
+# One reusable ledger, inside the repo and gitignored, so a clone just works.
+# Override with PB_LEDGER to park it on another disk (a ledger churns writes, and
+# a per-run ledger on the boot drive filled it during development).
+LEDGER="${PB_LEDGER:-$PWD/.test-ledger}"
 RPC=http://127.0.0.1:8899
 
 pkill -f solana-test-validator 2>/dev/null || true

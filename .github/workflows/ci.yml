@@ -89,5 +89,12 @@ jobs:
 
       - run: npm ci
 
-      - name: anchor test
-        run: anchor test
+      # NOT `anchor test`. That deploys with target/deploy/<name>-keypair.json,
+      # which is the program's own address key and is deliberately absent from this
+      # repo, so a fresh checkout would generate a new one, deploy at an address the
+      # code does not declare, and fail every test on DeclaredProgramIdMismatch —
+      # for reasons having nothing to do with the code under test. `npm run
+      # test:anchor` boots a validator with the programs pinned at their declared
+      # ids (--bpf-program), which needs no keypair at all.
+      - name: Program suite
+        run: npm run test:anchor
