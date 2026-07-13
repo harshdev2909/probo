@@ -1,6 +1,6 @@
 # Integrity Audit — every receipt, machine-verified
 
-> Generated 2026-07-13T11:46:37.151Z by `npm run audit`.
+> Generated 2026-07-13T14:20:00.655Z by `npm run audit`.
 > Nothing below was eyeballed. Re-run it yourself.
 
 ## The claim under audit
@@ -11,7 +11,7 @@ Every receipt is a real TxLINE merkle proof, verified on-chain. Zero fabricated.
 
 | verdict | meaning | count |
 |---|---|---|
-| **VERIFIED_LIVE** | predicate read from chain, proof re-fetched from TxLINE, **TxLINE's own program re-adjudicated it by simulation and returned true** | **295** |
+| **VERIFIED_LIVE** | predicate read from chain, proof re-fetched from TxLINE, **TxLINE's own program re-adjudicated it by simulation and returned true** | **419** |
 | **VERIFIED_TX** | TxLINE's ~23-day retention has expired for the fixture; the settle transaction on chain shows the txoracle CPI invoked and succeeding | **0** |
 | **FAIL** | neither — a P0 bug | **0** |
 
@@ -21,18 +21,18 @@ Every receipt is a real TxLINE merkle proof, verified on-chain. Zero fabricated.
 |---|---|---|---|
 | 3 | 75 | 0 | 0 |
 | 4 | 1 | 0 | 0 |
-| 28 | 17 | 0 | 0 |
-| 29 | 18 | 0 | 0 |
-| 30 | 22 | 0 | 0 |
-| 31 | 17 | 0 | 0 |
-| 32 | 18 | 0 | 0 |
-| 33 | 20 | 0 | 0 |
-| 34 | 18 | 0 | 0 |
-| 35 | 18 | 0 | 0 |
-| 36 | 14 | 0 | 0 |
-| 37 | 20 | 0 | 0 |
-| 38 | 15 | 0 | 0 |
-| 39 | 22 | 0 | 0 |
+| 28 | 25 | 0 | 0 |
+| 29 | 24 | 0 | 0 |
+| 30 | 36 | 0 | 0 |
+| 31 | 30 | 0 | 0 |
+| 32 | 32 | 0 | 0 |
+| 33 | 29 | 0 | 0 |
+| 34 | 28 | 0 | 0 |
+| 35 | 30 | 0 | 0 |
+| 36 | 23 | 0 | 0 |
+| 37 | 32 | 0 | 0 |
+| 38 | 26 | 0 | 0 |
+| 39 | 28 | 0 | 0 |
 
 ## Global checks
 
@@ -42,7 +42,7 @@ Every receipt is a real TxLINE merkle proof, verified on-chain. Zero fabricated.
 | No receipt settled against the mock oracle | ✅ PASS | every receipt's on-chain oracle is the real txoracle |
 | No scoreline without a proof | ✅ PASS | provenP1/P2 are null on every non-proven fixture |
 | Gap fixtures have no receipt | ✅ PASS | every no_proof fixture shows: no receipt, no score |
-| Reconciliation — settled on chain == receipts in DB | ❌ FAIL | on chain but no DB receipt: 418; in DB but not settled on chain: 0 |
+| Reconciliation — settled on chain == receipts in DB | ❌ FAIL | on chain but no DB receipt: 294; in DB but not settled on chain: 0 |
 
 ## What "no fabricated data" rests on, structurally
 

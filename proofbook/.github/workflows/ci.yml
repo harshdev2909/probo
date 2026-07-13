@@ -1,0 +1,85 @@
+# What runs here, and what deliberately does not.
+#
+# Three suites run on every push, and all three are hermetic. They compile, they
+# spin up a local validator, they assert, and they never reach for the network
+# beyond fetching packages. That is the point: a badge is only worth something if a
+# red one means the code is broken, rather than meaning devnet was slow that morning.
+#
+# The API suite, the keeper end to end suite and the integrity audit are NOT here.
+# They are real suites and they stay in the repo, but they assert against live
+# state: the audit reads 713 receipts off devnet, and the API suite asserts that
+# more than fifty settled markets exist. Putting them in CI would mean seeding a
+# database from the chain, which is network gated, or shipping a database dump,
+# which is the junk this cleanup removed. Both are documented in the README and each
+# runs with a single command against a live deployment.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  SOLANA_VERSION: v2.1.21
+  ANCHOR_VERSION: 0.31.1
+
+jobs:
+  # The parimutuel maths: solvency, rounding, fee bounds, and the zero winning pool
+  # case that used to void a market in silence.
+  rust:
+    name: Rust unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.89.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --manifest-path programs/proofbook/Cargo.toml
+
+  # The settlement core, offline: predicate coverage, disjoint stat families, the
+  # shape of the v3 proof payload. No RPC, no TxLINE.
+  sdk:
+    name: SDK tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run test:sdk
+
+  # The program itself, against a local validator and a mock oracle that performs
+  # the same merkle verification the real txoracle does. Twenty tests: parlays, the
+  # prop vault, tampered proofs, duplicate and incomplete stat coverage.
+  anchor:
+    name: Anchor program tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.89.0
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install the Solana toolchain
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/${SOLANA_VERSION}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Install Anchor
+        run: npm install -g @coral-xyz/anchor-cli@${ANCHOR_VERSION}
+
+      - name: Create a local keypair
+        run: solana-keygen new --no-bip39-passphrase --silent --force
+
+      - run: npm ci
+
+      - name: anchor test
+        run: anchor test

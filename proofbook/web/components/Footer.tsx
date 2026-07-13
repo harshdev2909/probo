@@ -98,34 +98,27 @@ export function Footer() {
         </div>
       </div>
 
-      {/* the back cover: full-bleed wordmark, flush to the bottom edge */}
-      <div aria-hidden className="select-none overflow-hidden">
-        <svg
-          viewBox="0 0 1000 186"
-          className="block w-full"
-          preserveAspectRatio="xMidYMax meet"
-          focusable="false"
+      {/* the back cover: full-bleed wordmark, flush to the bottom edge.
+          Real HTML display type, not SVG text — Chromium scales textLength
+          glyphs on both axes, which clipped the word at the page edge. The
+          size is vw-calibrated: rendered width scales linearly with font-size,
+          so one calibration holds at every viewport. */}
+      <div aria-hidden className="mt-2 select-none overflow-hidden md:mt-4">
+        <p
+          className="display whitespace-nowrap text-center text-[20.7vw]"
+          style={{
+            lineHeight: 0.8,
+            background:
+              "linear-gradient(to bottom, var(--ink-700), var(--ink-800))",
+            WebkitBackgroundClip: "text",
+            backgroundClip: "text",
+            color: "transparent",
+          }}
         >
-          <defs>
-            <linearGradient id="footer-probo" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="var(--ink-700)" />
-              <stop offset="1" stopColor="var(--ink-800)" />
-            </linearGradient>
-          </defs>
-          <text
-            x="0"
-            y="184"
-            className="display"
-            fontSize="258"
-            textLength="960"
-            lengthAdjust="spacingAndGlyphs"
-            fill="url(#footer-probo)"
-          >
-            PROBO
-          </text>
+          PROBO
           {/* the sealed proof — the mark's brass cell, as a full stop */}
-          <rect x="972" y="156" width="28" height="28" fill="var(--brass-500)" />
-        </svg>
+          <span className="ml-[0.05em] inline-block h-[0.1em] w-[0.1em] bg-brass-500" />
+        </p>
       </div>
     </footer>
   );

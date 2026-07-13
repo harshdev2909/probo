@@ -13,19 +13,33 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 
+import idl from "@/lib/idl/proofbook.json";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/** Taken from the IDL, so it cannot drift from the program the app actually talks to. */
+const PROGRAM_ID: string = (idl as { address: string }).address;
 
 const UPSTREAM =
   process.env.SOLANA_RPC_URL ?? // server-only. never NEXT_PUBLIC_.
   "https://api.devnet.solana.com";
 
 /**
- * Everything the wallet flow legitimately needs, and nothing else. Notably absent:
- * getProgramAccounts — it is expensive, and the browser has no business scanning
- * the program when the API already serves every list from Postgres.
+ * Everything the wallet flow legitimately needs, and nothing else.
+ *
+ * getProgramAccounts is the one that needs justifying. It used to be barred
+ * outright, on the grounds that it is expensive and that the API already serves
+ * every list from Postgres. That is still true of markets — and it is NOT true of
+ * prop vaults, which live only on chain and are deliberately read from there, so
+ * that /vault does not ask you to trust our database.
+ *
+ * So it is allowed, but narrowly: see `programAccountsAllowed` below. Only our own
+ * program, and only with a filter, which keeps it a bounded indexed scan instead of
+ * an open invitation to walk somebody else's program through our RPC key.
  */
 const ALLOWED = new Set([
+  "getProgramAccounts",
   "getLatestBlockhash",
   "getBlockHeight",
   "getSlot",
@@ -46,6 +60,23 @@ const ALLOWED = new Set([
   "getSignatureStatuses",
   "getTransaction",
 ]);
+
+/**
+ * A getProgramAccounts call is allowed only when it is one WE make:
+ *
+ *   · against the ProofBook program, and nothing else
+ *   · with at least one filter, so the RPC does the narrowing and returns a handful
+ *     of accounts rather than every account the program owns
+ *
+ * Anchor's `.all()` always sends a memcmp filter on the account discriminator, so the
+ * legitimate caller passes; a bare "scan this program" does not.
+ */
+function programAccountsAllowed(params: unknown): boolean {
+  if (!Array.isArray(params) || params.length === 0) return false;
+  if (params[0] !== PROGRAM_ID) return false;
+  const filters = (params[1] as any)?.filters;
+  return Array.isArray(filters) && filters.length > 0;
+}
 
 const MAX_BODY = 200_000; // a signed tx is ~1-2 KB; 200 KB is generous
 const WINDOW_MS = 60_000;
@@ -107,6 +138,15 @@ export async function POST(req: NextRequest) {
     if (typeof method !== "string" || !ALLOWED.has(method)) {
       return NextResponse.json(
         { error: `method not allowed: ${method ?? "(none)"}` },
+        { status: 403 }
+      );
+    }
+    if (method === "getProgramAccounts" && !programAccountsAllowed((c as any)?.params)) {
+      return NextResponse.json(
+        {
+          error:
+            "getProgramAccounts is permitted only for the ProofBook program, and only with a filter",
+        },
         { status: 403 }
       );
     }

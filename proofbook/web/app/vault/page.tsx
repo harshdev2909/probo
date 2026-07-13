@@ -41,6 +41,7 @@ import {
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 
 import idl from "@/lib/idl/proofbook.json";
+import { signSendConfirm } from "@/lib/anchor";
 import { api, type MarketView } from "@/lib/api";
 import { teamsForFixture } from "@/lib/teams";
 import { Reveal } from "@/components/motion";
@@ -103,6 +104,34 @@ const txHeaders = (c: Cred) => ({
   Authorization: `Bearer ${c.jwt}`,
   "X-Api-Token": c.apiToken,
 });
+
+/**
+ * Send an Anchor instruction the way the rest of this app sends them.
+ *
+ * NOT `.rpc()`. Anchor confirms over a WebSocket `signatureSubscribe`, and that
+ * socket never opens against an RPC reached through our own proxy, so the promise
+ * hangs and then reports "not confirmed in 30s" for a transaction that landed fine.
+ * `signSendConfirm` signs, broadcasts over our connection, and confirms by polling
+ * getSignatureStatuses over plain HTTP, which has no such failure mode.
+ */
+async function send(
+  connection: any,
+  wallet: any,
+  builder: any,
+  onSigned?: (sig: string) => void
+): Promise<string> {
+  const tx = await builder.transaction();
+  const { blockhash, lastValidBlockHeight } =
+    await connection.getLatestBlockhash("confirmed");
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = wallet.publicKey;
+  return signSendConfirm(
+    connection,
+    wallet,
+    { tx, lastValidBlockHeight, preparedAt: Date.now() },
+    onSigned
+  );
+}
 
 /**
  * What period must this vault pin, and what does TxLINE already know?
@@ -208,6 +237,7 @@ export default function VaultPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [vaults, setVaults] = useState<VaultRow[]>([]);
+  const [listError, setListError] = useState<string | null>(null);
   /** fixtureId → the period TxLINE proves it at TODAY. Retention moves this. */
   const [livePeriod, setLivePeriod] = useState<Record<number, number>>({});
 
@@ -259,8 +289,11 @@ export default function VaultPage() {
           b.lockTime - a.lockTime
       );
       setVaults(rows);
-    } catch {
-      /* an RPC blip is not worth an error banner over a list */
+      setListError(null);
+    } catch (e: any) {
+      // Never let a failed read render as "no vaults". An empty list is a claim
+      // about the chain, and we only get to make it when the chain actually answered.
+      setListError(String(e?.message ?? e).slice(0, 200));
     }
   }, [connection]);
 
@@ -365,7 +398,7 @@ export default function VaultPage() {
         : fx.kickoffTs + 2 * 3600;
 
       setBusy("Waiting for your signature…");
-      await prog.methods
+      const builder = prog.methods
         .initializePropVault(
           vaultId,
           [
@@ -398,8 +431,11 @@ export default function VaultPage() {
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
           rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-        })
-        .rpc();
+        });
+
+      await send(connection, wallet, builder, () =>
+        setBusy("Signed. Confirming on chain…")
+      );
 
       setNotice(
         `Vault open: ${amount} USDC escrowed on corners > ${threshold}, pinned to period ` +
@@ -436,7 +472,7 @@ export default function VaultPage() {
 
       setBusy("Waiting for your signature…");
       const prog = progOf(connection, wallet);
-      const sig: string = await prog.methods
+      const builder = prog.methods
         .settlePropVault(proof)
         .accounts({
           cranker: wallet.publicKey,
@@ -456,8 +492,11 @@ export default function VaultPage() {
         })
         .preInstructions([
           anchor.web3.ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
-        ])
-        .rpc();
+        ]);
+
+      const sig = await send(connection, wallet, builder, () =>
+        setBusy("Signed. Confirming on chain…")
+      );
 
       const total = (p.corners?.[0] ?? 0) + (p.corners?.[1] ?? 0);
       const held = total > row.threshold;
@@ -484,7 +523,7 @@ export default function VaultPage() {
     try {
       setBusy("Waiting for your signature…");
       const prog = progOf(connection, wallet);
-      await prog.methods
+      const builder = prog.methods
         .cancelPropVault()
         .accounts({
           canceller: wallet.publicKey,
@@ -495,8 +534,10 @@ export default function VaultPage() {
             new PublicKey(row.depositor)
           ),
           tokenProgram: TOKEN_PROGRAM_ID,
-        })
-        .rpc();
+        });
+      await send(connection, wallet, builder, () =>
+        setBusy("Signed. Confirming on chain…")
+      );
       setNotice(`Refunded: ${row.amount} USDC returned to the depositor, and to no one else.`);
       await refreshVaults();
     } catch (e: any) {
@@ -650,7 +691,13 @@ export default function VaultPage() {
         <span className="font-mono text-[10px] text-ink-600">read from chain</span>
       </div>
 
-      {vaults.length === 0 ? (
+      {listError ? (
+        <p className="text-[12px] leading-relaxed text-oxide-400">
+          Could not read the vaults from the chain: {listError}. That is a failure to
+          ask, not an answer — there may well be vaults. Reload rather than believe an
+          empty list.
+        </p>
+      ) : vaults.length === 0 ? (
         <p className="text-[12px] text-ink-600">No vaults yet. Open the first one above.</p>
       ) : (
         <ul className="space-y-2">

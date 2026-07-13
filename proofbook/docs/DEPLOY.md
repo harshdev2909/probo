@@ -30,14 +30,13 @@ npm run db:backup
 
 ## 1. Postgres
 
-Any managed Postgres (Neon, Railway, Supabase, RDS). You already have a Neon URL
-exported in your shell:
+Any managed Postgres (Neon, Railway, Supabase, RDS). The URL looks like:
 
 ```
-postgresql://neondb_owner:***@ep-shiny-river-...neon.tech/neondb?sslmode=require
+postgresql://<user>:<password>@<host>.neon.tech/<db>?sslmode=require
 ```
 
-That database was empty when I checked, so it's a fine target — but **it is your
+Keep it out of the repo — it belongs in the platform's secret store. **It is your
 call**; I did not write to it.
 
 ```bash

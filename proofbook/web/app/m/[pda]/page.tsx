@@ -204,7 +204,9 @@ export default function MarketDetail({ params }: { params: Promise<{ pda: string
       </div>
 
       <Reveal className="mt-10" delay={0.05}>
-        <Ticker />
+        {/* Seeded with THIS market's recorded history, so a match that settled last
+            week shows its story instead of an empty "match day is quiet". */}
+        <Ticker market={market} />
       </Reveal>
     </main>
   );

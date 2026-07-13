@@ -5,7 +5,7 @@
   "private": true,
   "workspaces": [
     "keeper",
-    "packages/txline-settle"
+    "sdk"
   ],
   "scripts": {
     "test": "NODE_OPTIONS='--no-experimental-strip-types' ts-mocha -p ./tsconfig.json -t 1000000 tests/*.ts",
@@ -33,7 +33,7 @@
     "db:backup": "./scripts/backup-db.sh",
     "test:e2e": "npm run test:api && npm run smoke",
     "idl:sync": "cp target/idl/proofbook.json idl/proofbook.json && cp target/idl/mock_oracle.json idl/mock_oracle.json && cp target/idl/proofbook.json web/lib/idl/proofbook.json && echo \"IDL synced to idl/ and web/lib/idl/\"",
-    "postinstall": "prisma generate --schema db/prisma/schema.prisma",
+    "postinstall": "prisma generate --schema db/prisma/schema.prisma && npm run sdk:build",
     "start:api": "NODE_OPTIONS='--no-experimental-strip-types' ts-node --transpile-only -P keeper/tsconfig.json api/src/index.ts",
     "start:keeper": "NODE_OPTIONS='--no-experimental-strip-types' ts-node --transpile-only -P keeper/tsconfig.json keeper/src/index.ts live",
     "preflight": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P keeper/tsconfig.json keeper/scripts/preflight.ts",
@@ -43,7 +43,11 @@
     "sharp": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P keeper/tsconfig.json keeper/scripts/sharp-vs-crowd.ts",
     "proof:size": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P keeper/tsconfig.json keeper/scripts/proof-size.ts",
     "sync:now": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P keeper/tsconfig.json keeper/scripts/sync-now.ts",
-    "audit": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P keeper/tsconfig.json keeper/scripts/integrity-audit.ts"
+    "audit": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P keeper/tsconfig.json keeper/scripts/integrity-audit.ts",
+    "sdk:build": "npm run build -w @h4rsharma/txline-settle",
+    "test:sdk": "npm test -w @h4rsharma/txline-settle",
+    "test:all": "npm run test:sdk && anchor test && npm run test:rust",
+    "test:rust": "cargo test --manifest-path programs/proofbook/Cargo.toml"
   },
   "dependencies": {
     "@coral-xyz/anchor": "0.32.1",

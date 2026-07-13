@@ -14,3 +14,15 @@ backups
 db/generated
 web/.env.local
 scripts/api.env
+
+# build output — the SDK's dist/ is produced by `npm install` (postinstall → sdk:build).
+# Committing it meant a stale bundle could ship while src/ said otherwise.
+sdk/dist
+web/.next
+web/out
+dist
+*.tsbuildinfo
+
+# logs and local dumps
+*.log
+npm-debug.log*

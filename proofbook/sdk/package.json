@@ -40,7 +40,8 @@
   "author": "h4rsharma",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/harshdev2909/proofbook.git"
+    "url": "git+https://github.com/harshdev2909/proofbook.git",
+    "directory": "sdk"
   },
   "homepage": "https://github.com/harshdev2909/proofbook#readme",
   "bugs": {
