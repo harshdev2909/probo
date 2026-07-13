@@ -85,3 +85,79 @@ export async function verifyReceipt(opts: {
     reason: verified ? undefined : "TxLINE's program did not verify this claim.",
   };
 }
+
+/** A settlement receipt, reconstructed FROM CHAIN — no database involved. */
+export interface ChainReceipt {
+  marketPda: string;
+  fixtureId: number;
+  marketType: number;
+  status: string;
+  winningOutcome: number | null;
+  /** Hex events-subtree root the settlement proved against. */
+  proofRef: string;
+  proofTs: number;
+  epochDay: number;
+  dailyRootsPda: string;
+  resolver: string;
+  settledAt: number;
+  totalPool: string;
+  totalWinningPool: string;
+  feeAmount: string;
+  /** Present for compound markets (market_type >= 16). */
+  legs?: { key: number; period: number }[];
+}
+
+/**
+ * Rebuild the receipt a settled market carries, reading only Solana accounts.
+ * `settlerIdl` is the settling program's IDL (used purely as an account decoder).
+ */
+export async function reconstructReceipt(opts: {
+  anchor: any;
+  connection: Connection;
+  settlerIdl: any;
+  marketPda: string;
+}): Promise<ChainReceipt> {
+  const { anchor, connection } = opts;
+  const market = new PublicKey(opts.marketPda);
+  const provider = new anchor.AnchorProvider(
+    connection,
+    {
+      publicKey: market,
+      signTransaction: async (t: any) => t,
+      signAllTransactions: async (t: any) => t,
+    },
+    { commitment: "confirmed" }
+  );
+  const prog = new anchor.Program(opts.settlerIdl, provider);
+  const m: any = await prog.account.market.fetch(market);
+
+  const out: ChainReceipt = {
+    marketPda: opts.marketPda,
+    fixtureId: Number(m.fixtureId),
+    marketType: Number(m.marketType),
+    status: Object.keys(m.status)[0],
+    winningOutcome: m.winningOutcome === 255 ? null : Number(m.winningOutcome),
+    proofRef: Buffer.from(m.settleProofRef).toString("hex"),
+    proofTs: Number(m.settleProofTs),
+    epochDay: Number(m.settleEpochDay),
+    dailyRootsPda: m.settleDailyRoots.toBase58(),
+    resolver: m.settleResolver.toBase58(),
+    settledAt: Number(m.settledAt),
+    totalPool: m.totalPool.toString(),
+    totalWinningPool: m.totalWinningPool?.toString() ?? "0",
+    feeAmount: m.feeAmount?.toString() ?? "0",
+  };
+  if (out.marketType >= 16) {
+    const [comboPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("combo"), market.toBuffer()],
+      prog.programId
+    );
+    try {
+      const combo: any = await prog.account.comboSpec.fetch(comboPda);
+      out.legs = combo.legs.map((l: any) => ({ key: l.key, period: l.period }));
+    } catch {
+      /* no sidecar — leave legs absent */
+    }
+  }
+  return out;
+}

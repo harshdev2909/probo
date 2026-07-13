@@ -41,15 +41,28 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
     let backoff = 1000;
     let timer: ReturnType<typeof setTimeout>;
     let closed = false;
+    // The server replays a backlog to fresh connections. Reconnecting with the
+    // last seen event id resumes precisely instead of re-receiving it — we make
+    // a new EventSource per attempt, so the browser's own Last-Event-ID is lost.
+    let lastId = "";
 
     const connect = () => {
       if (closed) return;
       setStatus("connecting");
-      es = new EventSource(`${KEEPER_API}/stream`);
+      const qs = lastId ? `?lastEventId=${encodeURIComponent(lastId)}` : "";
+      es = new EventSource(`${KEEPER_API}/stream${qs}`);
       const fan = (type: string) => (e: MessageEvent) => {
         try {
+          if (e.lastEventId) lastId = e.lastEventId;
           const data = JSON.parse(e.data);
-          listeners.current.forEach((fn) => fn(type, data));
+          // The deployed API wraps every event in an {id, type, payload, at}
+          // envelope; the local keeper broadcasts the bare object. Consumers
+          // only ever see the event itself.
+          const event =
+            data && typeof data === "object" && "payload" in data
+              ? data.payload
+              : data;
+          listeners.current.forEach((fn) => fn(type, event));
         } catch { /* heartbeat */ }
       };
       for (const t of ["score", "market", "receipt", "log"]) {

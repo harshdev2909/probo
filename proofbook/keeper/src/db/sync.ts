@@ -287,16 +287,23 @@ export class DbSync {
       }
     }
 
-    // The allowlist must be SELF-ENFORCING. Upserting allowed types is not
-    // enough: rows synced before a generation was abandoned stay behind, and a
-    // dead generation "surfacing" is precisely the failure the allowlist exists
-    // to prevent. Deleting cascades to positions, odds and receipts — correct,
-    // because a dead generation's rows are exactly the ones that must not show.
+    // Dead generations must never surface — but the purge must name them
+    // EXPLICITLY. The first version deleted "everything not in the allowlist",
+    // which made a stale MARKET_TYPES env into a data-destroying weapon: a
+    // redeployed keeper still carrying `3,4` deleted the entire catalogue
+    // projection (~900 markets and their receipts) on its first sync tick, and
+    // re-deleted any restore every tick after. An env var must never be able to
+    // do that. This tombstone list can only ever remove generations we have
+    // deliberately abandoned:
+    //   0,1,2   — pre-launch 1X2 generations (gen 1 is the zero-stake fossil)
+    //   16..27  — catalogue gen 1, ComboSpecs pinned to period=100 and therefore
+    //             permanently unsettleable (see shared/markets.ts)
+    const DEAD_GENERATIONS = [0, 1, 2, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27];
     const purged = await prisma.market.deleteMany({
-      where: { marketType: { notIn: [...allow] } },
+      where: { marketType: { in: DEAD_GENERATIONS } },
     });
     if (purged.count) {
-      log.warn("purged markets of disallowed generations from the projection", {
+      log.warn("purged dead-generation markets from the projection", {
         purged: purged.count,
       });
     }

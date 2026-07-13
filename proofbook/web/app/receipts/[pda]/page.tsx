@@ -163,6 +163,20 @@ export default function ReceiptPage({ params }: { params: Promise<{ pda: string 
         >
           Verify this yourself →
         </Link>
+        <p className="mt-4 font-mono text-[11px] text-ink-500">
+          or from your terminal, trusting nothing of ours:
+        </p>
+        <button
+          onClick={() =>
+            void navigator.clipboard.writeText(
+              `npx @h4rsharma/txline-settle verify ${pda}`
+            )
+          }
+          className="mt-1.5 max-w-full overflow-x-auto whitespace-nowrap border border-hairline px-3 py-2 font-mono text-[11px] text-ink-300 transition-colors hover:border-brass-600"
+          title="Click to copy"
+        >
+          npx @h4rsharma/txline-settle verify {pda.slice(0, 20)}… <span className="text-ink-600">(copy)</span>
+        </button>
       </div>
     </main>
   );

@@ -12,12 +12,23 @@
 import nacl from "tweetnacl";
 import type { Keypair } from "@solana/web3.js";
 
+/** Fetch a guest JWT — no credentials, no wallet. Enough for /auth, not for proofs. */
+export async function guestAuth(origin: string): Promise<string> {
+  const r = await fetch(`${origin}/auth/guest/start`, { method: "POST" });
+  if (!r.ok) throw new Error(`guest/start ${r.status}`);
+  const { token } = (await r.json()) as { token: string };
+  return token;
+}
+
 export interface SessionOpts {
   origin: string;
   /** Signs the activation message. Also the subscribing wallet. */
-  wallet: Keypair;
-  /** Called to perform the on-chain `subscribe` — see README. */
-  subscribe: () => Promise<string>;
+  wallet?: Keypair;
+  /** Performs the on-chain `subscribe`; see the CLI's `auth` for a reference. */
+  subscribe?: () => Promise<string>;
+  /** Reuse existing credentials instead of subscribing (e.g. from a cache). */
+  jwt?: string;
+  apiToken?: string;
   leagues?: string[];
 }
 
@@ -25,7 +36,10 @@ export class TxLineSession {
   jwt?: string;
   apiToken?: string;
 
-  constructor(private opts: SessionOpts) {}
+  constructor(private opts: SessionOpts) {
+    this.jwt = opts.jwt;
+    this.apiToken = opts.apiToken;
+  }
 
   headers(): Record<string, string> {
     const h: Record<string, string> = {};
@@ -37,7 +51,16 @@ export class TxLineSession {
   /** Obtain both credentials if missing. Idempotent. */
   async ensure(): Promise<void> {
     if (!this.jwt) await this.renewJwt();
-    if (!this.apiToken) await this.activate();
+    if (!this.apiToken) {
+      if (!this.opts.subscribe || !this.opts.wallet) {
+        throw new Error(
+          "no apiToken and no way to mint one: pass {jwt, apiToken} from a cache, " +
+            "or {wallet, subscribe} to perform the on-chain free-tier subscription " +
+            "(a guest JWT alone cannot fetch proofs — the API answers 403 Missing API token)"
+        );
+      }
+      await this.activate();
+    }
   }
 
   async renewJwt(): Promise<string> {
@@ -57,6 +80,8 @@ export class TxLineSession {
    */
   async activate(): Promise<string> {
     if (!this.jwt) await this.renewJwt();
+    if (!this.opts.subscribe || !this.opts.wallet)
+      throw new Error("activate() needs {wallet, subscribe} — see SessionOpts");
     const txSig = await this.opts.subscribe();
     const leagues = this.opts.leagues ?? [];
     const msg = `${txSig}:${leagues.join(",")}:${this.jwt}`;
@@ -91,7 +116,7 @@ export class TxLineSession {
     if (r.status === 401) {
       await this.renewJwt();
       r = await fetch(`${this.opts.origin}/api${path}`, { headers: this.headers() });
-    } else if (r.status === 403) {
+    } else if (r.status === 403 && this.opts.subscribe) {
       // A rejected API token. Renewing the JWT cannot fix this.
       await this.activate();
       r = await fetch(`${this.opts.origin}/api${path}`, { headers: this.headers() });

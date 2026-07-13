@@ -1,13 +1,48 @@
-# `@proofbook/txline-settle`
+# `@h4rsharma/txline-settle`
 
-Settle a Solana market against a **real TxLINE Merkle proof**.
+> **Unofficial, community-built SDK for TxLINE's on-chain sports oracle. Not
+> affiliated with TxODDS/TxLINE.**
 
-Everything ProofBook learned about TxLINE's on-chain interface, extracted so the
-next program doesn't have to learn it the same way — by failed CPIs.
+Settle a Solana market against a **real TxLINE Merkle proof** — and verify
+anyone else's settlement while trusting nothing.
+
+Everything [ProofBook](https://github.com/harshdev2909/proofbook) learned about
+TxLINE's on-chain interface, extracted so the next program doesn't have to learn
+it the same way — by failed CPIs. This is the same code ProofBook's keeper runs,
+not a demo copy.
 
 ```bash
-npm i @proofbook/txline-settle
+npm i @h4rsharma/txline-settle
 ```
+
+## Verify a settlement in one command
+
+```bash
+npx @h4rsharma/txline-settle verify <marketPda>      # or a settle tx signature
+```
+
+Five steps, none of which trust the settling app: the settlement and its
+predicate are read from the **Solana account**, the merkle root from **TxLINE's
+own on-chain PDA**, the proof from **TxLINE's API**, and the verdict from
+**TxLINE's own program** by simulation. Add `--tamper` to corrupt one byte and
+watch the oracle refuse it.
+
+## The CLI
+
+```
+txline-settle auth                      # guest JWT → free-tier on-chain subscribe → activate
+txline-settle fixtures [--league 72]    # list fixtures
+txline-settle scores <fixtureId>        # score records; --watch streams live (SSE)
+txline-settle proof <fixtureId> --stats 1,2      # fetch a real v3 merkle multiproof
+txline-settle predicate --a homeWin --b overCorners:9.5   # exhaustive 2×2; rejects overlaps
+txline-settle predicate --check "1,2+7,8"                 # are these leg sets combinable?
+txline-settle verify <marketPda|txSig> [--tamper] # ⭐ the hero
+txline-settle market create|bet|lock|settle|claim|receipt # full lifecycle (reference market)
+```
+
+Global: `--json` on everything · `--devnet` (default) / `--mainnet` ·
+`--rpc <url>` · `--api <origin>` · `--keypair <path>`. Short alias: `txsettle`.
+`auth` caches the session at `~/.txline-settle/` — read credentials, not funds.
 
 ---
 
@@ -21,7 +56,7 @@ import {
   parlay, homeWin, overCorners, strategyFor,
   findFinalisedSeq, fetchProofV3, toPayloadV3, proofEpochDay,
   dailyRootsPda,
-} from "@proofbook/txline-settle";
+} from "@h4rsharma/txline-settle";
 
 // "Home win AND over 9.5 corners" — an exhaustive 2x2 grid, not Hit/Miss.
 const market  = parlay(homeWin, overCorners(9.5));      // legs: [1,2,7,8]
@@ -141,7 +176,7 @@ leaves share almost all their internal nodes.
 ## Verify a receipt, trusting nobody
 
 ```ts
-import { verifyReceipt } from "@proofbook/txline-settle";
+import { verifyReceipt } from "@h4rsharma/txline-settle";
 
 const r = await verifyReceipt({
   connection, session, txoracle, BN,

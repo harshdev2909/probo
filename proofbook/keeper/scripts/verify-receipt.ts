@@ -22,6 +22,14 @@ import * as path from "path";
 
 import { loadConfig, ROOT } from "../src/config";
 import { Store } from "../src/state";
+// Dogfooding the published SDK: the session, proof fetch and roots-PDA logic
+// here are the exact exports of @h4rsharma/txline-settle.
+import {
+  TxLineSession,
+  findFinalisedSeq,
+  fetchProofV3,
+  dailyRootsPda as sdkDailyRootsPda,
+} from "@h4rsharma/txline-settle";
 
 const MS_PER_DAY = 86_400_000;
 const ORIGIN = process.env.TXLINE_API ?? "https://txline-dev.txodds.com";
@@ -37,10 +45,8 @@ async function main() {
 
   const store = new Store(cfg.dataDir);
   const { jwt, apiToken } = store.data.session;
-  const H = {
-    Authorization: `Bearer ${jwt}`,
-    "X-Api-Token": apiToken!,
-  } as any;
+  const session = new TxLineSession({ origin: ORIGIN, jwt, apiToken });
+  const H = session.headers() as any;
 
   const conn = new Connection(cfg.rpcUrl, "confirmed");
   const payer = Keypair.fromSecretKey(
@@ -129,21 +135,14 @@ async function main() {
   info(`${rootsPda.toBase58()}  owned by ${rootAcct.owner.toBase58()}`);
 
   // ── 4. the proof, from TxLINE ─────────────────────────────────────────────
-  const snap = await fetch(`${ORIGIN}/api/scores/snapshot/${fixtureId}`, {
-    headers: H,
-  });
-  const rows = (await snap.json()) as any[];
-  const fin = rows.filter((r) => r.StatusId === 100);
-  const seq = (fin.length ? fin : rows).reduce(
-    (mx, r) => Math.max(mx, r.Seq ?? 0),
-    0
+  void H;
+  const seq = await findFinalisedSeq(session, fixtureId);
+  const val: any = await fetchProofV3(
+    session,
+    fixtureId,
+    seq,
+    legs.map((l) => l.key)
   );
-  const keys = legs.map((l) => l.key).join(",");
-  const pr = await fetch(
-    `${ORIGIN}/api/scores/stat-validation-v3?fixtureId=${fixtureId}&seq=${seq}&statKeys=${keys}`,
-    { headers: H }
-  );
-  const val: any = await pr.json();
   ok("4. proof fetched from TxLINE");
   info(
     val.statsToProve

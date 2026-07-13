@@ -20,6 +20,7 @@ const LINKS = [
   ["/portfolio", "Portfolio"],
   ["/keeper", "Keeper"],
   ["/status", "Status"],
+  ["/docs", "Docs"],
 ] as const;
 
 export function Nav() {

@@ -315,7 +315,7 @@ async function main() {
   );
 
   // ── SSE ───────────────────────────────────────────────────────────────────
-  app.get("/stream", (req, reply) => {
+  app.get("/stream", async (req, reply) => {
     const types = String((req.query as any)?.types ?? "")
       .split(",")
       .map((s) => s.trim())
@@ -332,6 +332,21 @@ async function main() {
       Vary: "Origin",
     });
     reply.raw.write(`retry: 3000\n: connected\n\n`);
+
+    // History first, then live: a fresh wire is never blank, and a reconnect
+    // resumes from the id the client sends back — the header on the browser's
+    // own retry, the query param when the web client rebuilds its EventSource.
+    // Events landing during the replay query are missed; the next reconnect's
+    // id-resume covers that.
+    let afterId: bigint | undefined;
+    const lastId =
+      req.headers["last-event-id"] ?? (req.query as any)?.lastEventId;
+    if (typeof lastId === "string" && /^\d+$/.test(lastId)) {
+      afterId = BigInt(lastId);
+    }
+    await stream
+      .replay((chunk) => reply.raw.write(chunk), types, afterId)
+      .catch((e) => req.log.warn({ err: e }, "stream backlog replay failed"));
 
     const remove = stream.addClient((chunk) => reply.raw.write(chunk), types);
     // Proxies drop idle connections; a comment every 25s keeps them open.

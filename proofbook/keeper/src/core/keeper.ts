@@ -1,5 +1,5 @@
 import { KeeperConfig } from "../config";
-import { Logger } from "../logger";
+import { Logger, logBus, LogRecord } from "../logger";
 import { Store, type StoreLike } from "../state";
 import { Chain } from "../chain/proofbook";
 import { TxLineSession } from "../txline/session";
@@ -13,6 +13,16 @@ import { ApiServer } from "../api/server";
 import { PgStore, emitEvent } from "../pgstore";
 import { Leader } from "../leader";
 import { DbSync } from "../db/sync";
+
+// The site's Keeper Wire renders `log` events. Locally the keeper's own API
+// forwards its whole logBus; in the deployed shape events travel through
+// Postgres, so only the match story crosses over — one feed_event row per wire
+// line, not one per debug log. pgstore stays excluded unconditionally:
+// emitEvent logs its own failures, and forwarding those would re-enter
+// emitEvent forever against a dead database.
+const WIRE_STORY =
+  /SETTLED|PROOF RECEIPT|market|lock|bet|goal|finalised|kick|score|cancel|refund|settle/i;
+const WIRE_EXCLUDE = /^(pgstore|store|sync|leader|api|cli|capture|odds|txline)/i;
 
 /**
  * The keeper orchestrator — the autonomous off-chain brain.
@@ -37,6 +47,7 @@ export class Keeper {
 
   private leader?: Leader;
   private sync?: DbSync;
+  private wireForward?: (rec: LogRecord) => void;
 
   /**
    * Postgres-backed keepers must load their store asynchronously, so construction
@@ -135,6 +146,16 @@ export class Keeper {
           60_000
         )
       );
+
+      // Without this, the deployed site's Keeper Wire is silent forever: the
+      // stateless API only relays feed_events, and nothing else writes `log`.
+      this.wireForward = (rec) => {
+        if (rec.level === "debug") return;
+        if (WIRE_EXCLUDE.test(rec.component)) return;
+        if (!WIRE_STORY.test(rec.msg + " " + rec.component)) return;
+        void emitEvent("log", rec);
+      };
+      logBus.on("log", this.wireForward);
     } else {
       // No database: this is the self-contained local/replay demo, so the keeper
       // serves its own read API.
@@ -301,6 +322,7 @@ export class Keeper {
   }
 
   async stop() {
+    if (this.wireForward) logBus.removeListener("log", this.wireForward);
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
     (this.feed as any)?.stop?.();

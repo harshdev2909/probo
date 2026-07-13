@@ -1,24 +1,66 @@
 {
-  "name": "@proofbook/txline-settle",
+  "name": "@h4rsharma/txline-settle",
   "version": "0.1.0",
-  "description": "Settle a Solana market against a real TxLINE merkle proof. validate_stat_v3 CPI helper, predicate builder that refuses unprovable parlays, and trust-nothing receipt verification.",
-  "keywords": ["solana", "txline", "txodds", "oracle", "merkle", "prediction-market", "anchor"],
+  "description": "Unofficial SDK + CLI for TxLINE's on-chain sports oracle: fetch merkle proofs, build provable predicates (disjoint-stat-family enforced), CPI validate_stat_v3 from any Solana program, and independently verify settlements against the live oracle.",
+  "keywords": [
+    "solana",
+    "txline",
+    "txodds",
+    "oracle",
+    "merkle-proof",
+    "prediction-market",
+    "sports-data",
+    "anchor",
+    "settlement",
+    "world-cup"
+  ],
   "license": "MIT",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "files": ["dist", "rust", "README.md"],
+  "main": "dist/cjs/index.js",
+  "types": "dist/cjs/index.d.ts",
+  "files": [
+    "dist",
+    "rust",
+    "idl",
+    "README.md"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "prepublishOnly": "npm run build"
-  },
-  "peerDependencies": {
-    "@coral-xyz/anchor": ">=0.30",
-    "@solana/web3.js": "^1.98.0"
+    "build": "rm -rf dist && tsc -p tsconfig.cjs.json && tsc -p tsconfig.esm.json && node -e \"require('fs').writeFileSync('dist/esm/package.json', JSON.stringify({type:'module'}))\" && node -e \"const f='dist/cjs/cli.js';const fs=require('fs');fs.writeFileSync(f,'#!/usr/bin/env node\\n'+fs.readFileSync(f,'utf8'));fs.chmodSync(f,0o755)\"",
+    "test": "ts-node --compiler-options '{\"module\":\"commonjs\",\"target\":\"ES2020\",\"esModuleInterop\":true,\"skipLibCheck\":true,\"strict\":false}' src/sdk.test.ts",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
+    "@solana/web3.js": "^1.98.4",
+    "@solana/spl-token": "^0.4.14",
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
     "typescript": "^5.6.0"
+  },
+  "author": "h4rsharma",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/harshdev2909/proofbook.git"
+  },
+  "homepage": "https://github.com/harshdev2909/proofbook#readme",
+  "bugs": {
+    "url": "https://github.com/harshdev2909/proofbook/issues"
+  },
+  "module": "dist/esm/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/cjs/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./idl/txoracle.json": "./idl/txoracle.json",
+    "./idl/proofbook.json": "./idl/proofbook.json"
+  },
+  "bin": {
+    "txline-settle": "dist/cjs/cli.js",
+    "txsettle": "dist/cjs/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

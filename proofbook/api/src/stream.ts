@@ -19,6 +19,11 @@ import { prisma, CHANNEL } from "../../db/src/client";
 
 export { CHANNEL };
 
+// A fresh page load gets enough history to fill the wire; a reconnecting
+// client resuming by id can catch up on a longer gap without a full dump.
+const BACKLOG_LIMIT = 50;
+const RESUME_LIMIT = 500;
+
 export interface StreamEvent {
   id: string;
   type: string;
@@ -85,20 +90,56 @@ export class EventStream {
       .findUnique({ where: { id } })
       .catch(() => null);
     if (!row) return;
-    this.broadcast({
+    this.broadcast(this.eventOf(row));
+  }
+
+  private frameOf(ev: StreamEvent): string {
+    return `id: ${ev.id}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`;
+  }
+
+  private eventOf(row: {
+    id: bigint;
+    type: string;
+    fixtureId: number | null;
+    marketPda: string | null;
+    payload: unknown;
+    createdAt: Date;
+  }): StreamEvent {
+    return {
       id: row.id.toString(),
       type: row.type,
       fixtureId: row.fixtureId,
       marketPda: row.marketPda,
       payload: row.payload,
       at: Math.floor(row.createdAt.getTime() / 1000),
+    };
+  }
+
+  /**
+   * Replay recent events to a just-connected client so the wire is never blank
+   * on page load. A Last-Event-ID resumes precisely from where the client
+   * dropped; otherwise the last BACKLOG_LIMIT rows tell the story so far.
+   */
+  async replay(
+    write: (chunk: string) => void,
+    types?: string[],
+    afterId?: bigint
+  ): Promise<void> {
+    const rows = await prisma.feedEvent.findMany({
+      where: {
+        ...(types && types.length ? { type: { in: types } } : {}),
+        ...(afterId !== undefined ? { id: { gt: afterId } } : {}),
+      },
+      orderBy: { id: "desc" },
+      take: afterId !== undefined ? RESUME_LIMIT : BACKLOG_LIMIT,
     });
+    for (const row of rows.reverse()) {
+      write(this.frameOf(this.eventOf(row)));
+    }
   }
 
   broadcast(ev: StreamEvent) {
-    const frame = `id: ${ev.id}\nevent: ${ev.type}\ndata: ${JSON.stringify(
-      ev
-    )}\n\n`;
+    const frame = this.frameOf(ev);
     for (const c of this.clients.values()) {
       if (c.types && !c.types.has(ev.type)) continue;
       try {

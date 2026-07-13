@@ -110,26 +110,11 @@ export interface MarketTypeDef {
 // Two legs may only be combined if they touch DIFFERENT families. This is the
 // build-time enforcement of TxLINE's DuplicateStatCoverage rule.
 
-export const STAT_FAMILY: Record<number, string> = {
-  1: "goals",
-  2: "goals",
-  3: "yellows",
-  4: "yellows",
-  5: "reds",
-  6: "reds",
-  7: "corners",
-  8: "corners",
-  1001: "ht_goals",
-  1002: "ht_goals",
-  1007: "ht_corners",
-  1008: "ht_corners",
-};
-
-export function familyOf(key: number): string {
-  const f = STAT_FAMILY[key];
-  if (!f) throw new Error(`stat key ${key} is not provable (not in keys 1-8 / period-scoped)`);
-  return f;
-}
+// The stat-family rule is enforced by the published SDK — the same package
+// anyone else installs. The keeper deliberately consumes it from there rather
+// than keeping a private copy, so the SDK is provably the code this app runs.
+export { familyOf, STAT_FAMILY } from "@h4rsharma/txline-settle";
+import { familyOf } from "@h4rsharma/txline-settle";
 
 // Full-game legs (period 100 = game_finalised, by ANY method).
 const P = 100;
