@@ -26,7 +26,10 @@ export function Nav() {
   const path = usePathname();
   const status = useStreamStatus();
   return (
-    <header className="sticky top-0 z-40 border-b border-hairline bg-ink-950/92 backdrop-blur-[2px]">
+    // Translucent on purpose: at /92 the nav was a solid slab that cut the page
+    // artwork off with a hard seam under its border — the art should run through
+    // it, blurred, and only dim enough to keep the labels AA-readable.
+    <header className="sticky top-0 z-40 border-b border-hairline bg-ink-950/60 backdrop-blur-md">
       <nav className="mx-auto flex h-16 w-full max-w-6xl items-center gap-6 px-6 lg:px-10">
         <Link href="/" aria-label="Probo home" className="shrink-0">
           <Wordmark />

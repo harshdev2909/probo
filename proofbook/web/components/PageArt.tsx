@@ -51,7 +51,7 @@ export function PageArt({
         className="absolute inset-0"
         style={{
           background:
-            "linear-gradient(to bottom, rgba(15,13,10,0.78) 0%, rgba(15,13,10,0.38) 40%, rgba(15,13,10,0.85) 100%)",
+            "linear-gradient(to bottom, rgba(15,13,10,0.55) 0%, rgba(15,13,10,0.38) 40%, rgba(15,13,10,0.82) 100%)",
         }}
       />
     </div>,
