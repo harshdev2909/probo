@@ -560,6 +560,9 @@ async function main() {
   md.push(`  receipt, no score, a stated reason. Checked above.`);
   md.push(``);
 
+  // docs/ is a generated-output location, not a tracked doc folder, so create it
+  // if it is absent rather than crashing at the finish line.
+  fs.mkdirSync(path.join(ROOT, "docs"), { recursive: true });
   fs.writeFileSync(path.join(ROOT, "docs", "INTEGRITY_AUDIT.md"), md.join("\n"));
 
   console.log(

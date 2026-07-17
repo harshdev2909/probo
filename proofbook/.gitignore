@@ -29,3 +29,8 @@ npm-debug.log*
 
 # local validator ledger (npm run test:anchor)
 .test-ledger
+
+# generated build outputs (npm run audit / npm run coverage). docs/ was removed as
+# a hand-written docs folder; these are regenerated locally and are not committed.
+docs/INTEGRITY_AUDIT.md
+docs/COVERAGE.md
