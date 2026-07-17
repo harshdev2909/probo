@@ -11,12 +11,16 @@ import Link from "next/link";
 import type { MarketView } from "@/lib/api";
 import { teamsForFixture, isLivePhase, phaseLabel } from "@/lib/teams";
 import { kickoffLabel } from "@/lib/format";
+import { headlineMarkets } from "@/lib/tournament";
 import { Flag } from "./Flag";
 import { LiveBadge } from "./Score";
 
 export function SettlesItself({ markets }: { markets: MarketView[] }) {
-  // The knockout matches still to be decided: SF, 3rd, Final headline markets.
-  const upcoming = markets
+  // ONE card per fixture, not per market. A fixture now carries a dozen markets
+  // (goals, corners, cards, parlays…), so mapping over raw markets rendered the
+  // Final and the 3rd-place playoff a dozen times each. `headlineMarkets` collapses
+  // each fixture to its single 1X2, and its page links through to all the rest.
+  const upcoming = headlineMarkets(markets)
     .filter((m) => ["SF", "3rd", "Final"].includes(m.stage))
     .sort((a, b) => a.kickoffTs - b.kickoffTs);
   if (!upcoming.length) return null;
