@@ -57,6 +57,22 @@ Worth a look too: [`/vault`](https://probo-5xn6.vercel.app/vault), parametric in
 loss adjuster is a proof, and [`/status`](https://probo-5xn6.vercel.app/status) for the
 keeper's own liveness. [`/docs`](https://probo-5xn6.vercel.app/docs) has the SDK and CLI.
 
+## Three surfaces built for the demo
+
+- **[`/theater`](https://probo-5xn6.vercel.app/theater) — Settlement Theater.** A market
+  settling itself, staged beat by beat: score → full time → proof → `validate_stat_v3`
+  CPI → **VERIFIED** → paid, with no human clicking resolve. Runs live for the knockout
+  matches; `/theater/:fixtureId` replays any recorded settlement, so the moment is
+  screen-recordable at any hour. The VERIFIED beat is gated on a real receipt landing —
+  until it does, the stage holds at "awaiting oracle."
+- **Proof-of-Outcome NFT.** On the receipt page for a knockout final, mint the settlement
+  as a collectible — **Metaplex Core**, so the Probo program is untouched; your wallet
+  signs and pays. Its metadata embeds the proof reference, the settle transaction, and a
+  verify link. It refuses to mint unless the market is genuinely settled with a real proof.
+- **Match Oracle.** On every match page, a deterministic read of the line — TxLINE's
+  demargined consensus against the crowd's pool, the divergence, and what the movement
+  means. Real analysis of real numbers; display only, never near a payout.
+
 ## How a market settles
 
 ```
