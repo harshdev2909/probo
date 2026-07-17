@@ -129,7 +129,7 @@ export default async function Image({
         {/* the match + the proven score */}
         <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
           <div style={{ color: INK_600, fontSize: 22, letterSpacing: 2 }}>
-            {r.stage ?? "WORLD CUP"} · FIXTURE {r.fixtureId}
+            {`${r.stage ?? "WORLD CUP"} · FIXTURE ${r.matchId ?? r.fixtureId ?? ""}`}
           </div>
 
           <div
