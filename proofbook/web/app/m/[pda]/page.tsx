@@ -18,6 +18,7 @@ import { RollingNumber, LiveBadge } from "@/components/Score";
 import { BetSlip } from "@/components/BetSlip";
 import { Ticker } from "@/components/Ticker";
 import { SharpVsCrowd } from "@/components/SharpVsCrowd";
+import { MatchOracle } from "@/components/MatchOracle";
 import { ParlayGrid } from "@/components/ParlayGrid";
 import { FixtureMarkets } from "@/components/FixtureMarkets";
 import { StaggerItem, Reveal } from "@/components/motion";
@@ -194,8 +195,16 @@ export default function MarketDetail({ params }: { params: Promise<{ pda: string
           <BetSlip market={market} onPlaced={() => void load()} />
         </StaggerItem>
 
-        {/* what the sharps think, next to what the crowd here thinks */}
+        {/* the read, then the numbers behind it */}
         <StaggerItem i={3} base={0.12}>
+          <MatchOracle
+            marketPda={pda}
+            outcomes={market.outcomes?.map((o: any) => o.label ?? o) ?? []}
+          />
+        </StaggerItem>
+
+        {/* what the sharps think, next to what the crowd here thinks */}
+        <StaggerItem i={4} base={0.12}>
           <SharpVsCrowd
             marketPda={pda}
             outcomes={market.outcomes?.map((o: any) => o.label ?? o) ?? []}
