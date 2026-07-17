@@ -48,7 +48,8 @@
     "test:sdk": "npm test -w @h4rsharma/txline-settle",
     "test:all": "npm run test:rust && npm run test:sdk && npm run test:anchor",
     "test:rust": "cargo test --manifest-path programs/proofbook/Cargo.toml",
-    "test:anchor": "./scripts/test-anchor.sh"
+    "test:anchor": "./scripts/test-anchor.sh",
+    "seed:open-catalogue": "NODE_OPTIONS='--no-experimental-strip-types' ts-node -P keeper/tsconfig.json keeper/scripts/seed-open-catalogue.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "0.32.1",

@@ -9,6 +9,7 @@ import { OddsStream } from "../txline/oddsStream";
 import { ReplayFeed, ReplayFixture, loadReplayFixture } from "../txline/replay";
 import { MarketManager } from "./marketManager";
 import { Settler } from "./settler";
+import { CatalogueSettler } from "./catalogueSettler";
 import { ApiServer } from "../api/server";
 import { PgStore, emitEvent } from "../pgstore";
 import { Leader } from "../leader";
@@ -37,6 +38,7 @@ export class Keeper {
   chain: Chain;
   markets: MarketManager;
   settler: Settler;
+  catalogueSettler: CatalogueSettler;
   api: ApiServer;
   session?: TxLineSession;
   client?: TxLineClient;
@@ -79,6 +81,16 @@ export class Keeper {
       this.client,
       this.replayFixture
     );
+    // The 1X2 settler above handles exactly one market per fixture. This settles
+    // the rest of the catalogue (goals, corners, cards, parlays…) on the same
+    // finalisation, each via validate_stat_v3. Kept separate so it cannot regress
+    // the 1X2 path or the existing receipts.
+    this.catalogueSettler = new CatalogueSettler(
+      cfg,
+      this.store,
+      this.chain,
+      this.client
+    );
 
     // Fan settlement + market updates out to API stream subscribers, and keep
     // the indexer cache hot on every state change.
@@ -104,6 +116,7 @@ export class Keeper {
     };
     this.settler.on("receipt", onMarketEvent("receipt"));
     this.settler.on("market", onMarketEvent("market"));
+    this.catalogueSettler.on("receipt", onMarketEvent("receipt"));
     this.markets.on("market", onMarketEvent("market"));
   }
 
@@ -318,6 +331,7 @@ export class Keeper {
         }
       );
       this.settler.onFinalised(u.fixtureId, u.seq);
+      this.catalogueSettler.onFinalised(u.fixtureId, u.seq);
     }
   }
 
