@@ -14,6 +14,7 @@ const WalletButton = dynamic(
 
 const LINKS = [
   ["/matches", "Matches"],
+  ["/theater", "Theater"],
   ["/receipts", "Receipts"],
   ["/bracket", "Bracket"],
   ["/standings", "Groups"],

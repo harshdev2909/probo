@@ -249,3 +249,28 @@ export interface Paginated<T> {
   offset: number;
   hasMore: boolean;
 }
+
+/**
+ * The recorded event timeline for one fixture — the Settlement Theater's replay
+ * source. `/archive/:fixtureId` returns it. Every event is a real row the keeper
+ * persisted as it happened; nothing here is synthesized.
+ */
+export interface ArchiveEvent {
+  id: string;
+  /** "score" | "market" | "receipt" */
+  type: string;
+  seq: number | null;
+  marketPda: string | null;
+  /** Unix seconds. */
+  at: number;
+  payload: unknown;
+}
+
+export interface ArchiveView {
+  fixtureId: number;
+  name: string;
+  kickoffTs: number;
+  /** When the settlement event landed — null if this fixture never settled. */
+  settledAt: number | null;
+  events: ArchiveEvent[];
+}

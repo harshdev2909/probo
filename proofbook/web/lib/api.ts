@@ -21,6 +21,7 @@ import type { ReceiptSummary,
   FaucetResult,
   TeamRef,
   Paginated,
+  ArchiveView,
 } from "./contracts";
 
 export type {
@@ -36,6 +37,7 @@ export type {
   FaucetResult,
   TeamRef,
   Paginated,
+  ArchiveView,
 };
 
 /** Public API base URL. Not a secret — it is a URL anyone can curl. */
@@ -132,6 +134,8 @@ export const api = {
   /** The headline stat: receipts by market type. */
   receiptSummary: () => get<ReceiptSummary>("/receipts/summary"),
   receipt: (pda: string) => get<ReceiptView>(`/receipts/${pda}`),
+  /** The recorded event timeline for one fixture — the Theater replay source. */
+  archive: (fixtureId: number) => get<ArchiveView>(`/archive/${fixtureId}`),
 
   positions: (wallet: string) => get<PositionView[]>(`/positions/${wallet}`),
   standings: () => get<GroupView[]>("/standings"),
