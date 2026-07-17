@@ -11,6 +11,7 @@ import * as anchor from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { api, type ReceiptView, type MarketView } from "@/lib/api";
+import { MintProofNFT, isMintable } from "@/components/MintProofNFT";
 import { teamsForFixture } from "@/lib/teams";
 import idl from "@/lib/idl/proofbook.json";
 import { Receipt, type ReceiptData } from "@/components/Receipt";
@@ -130,6 +131,12 @@ export default function ReceiptPage({ params }: { params: Promise<{ pda: string 
       <Reveal>
         <Receipt data={data} onVerify={verify} />
       </Reveal>
+
+      {isMintable(receipt) && (
+        <Reveal className="mx-auto mt-8 max-w-[560px]">
+          <MintProofNFT receipt={receipt} />
+        </Reveal>
+      )}
 
       {receipt.isParlay && (
         <p className="mx-auto mt-6 max-w-[560px] border border-dashed border-hairline p-4 text-center font-mono text-[11px] leading-relaxed text-ink-500">
